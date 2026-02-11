@@ -9,6 +9,9 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![greet])
+        .plugin(tauri_plugin_window_state::Builder::default().build()) // 이 줄을 추가!
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
+
+
