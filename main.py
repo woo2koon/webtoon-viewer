@@ -1,6 +1,17 @@
 import webview
 import os
 import base64
+import json
+import sys
+
+# PyInstaller 빌드 시 리소스 경로 처리를 위한 함수
+def get_resource_path(relative_path):
+    if hasattr(sys, '_MEIPASS'):
+        return os.path.join(sys._MEIPASS, relative_path)
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), relative_path)
+
+# 설정 파일 경로 (사용자 문서 폴더 등에 저장하는 것이 안전하지만, 일단 실행 파일 경로 근처로 지정)
+SETTINGS_FILE = os.path.join(os.path.expanduser("~"), ".webtoon_pro_viewer_settings.json")
 
 class ViewerAPI:
     def __init__(self):
@@ -60,21 +71,51 @@ class ViewerAPI:
         # print(f"[JS DEBUG] {msg}")
         return True
 
+def load_window_settings():
+    try:
+        if os.path.exists(SETTINGS_FILE):
+            with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
+                return json.load(f)
+    except Exception as e:
+        print(f"설정 로드 실패: {e}")
+    return {"width": 690, "height": 1200, "x": None, "y": None}
+
+def save_window_settings(window):
+    try:
+        settings = {
+            "width": window.width,
+            "height": window.height,
+            "x": window.x,
+            "y": window.y
+        }
+        with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
+            json.dump(settings, f, indent=4)
+        print("✅ 창 설정 저장 완료")
+    except Exception as e:
+        print(f"창 설정 저장 실패: {e}")
+
 def start_app():
     api = ViewerAPI()
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    html_path = os.path.join(current_dir, 'viewer.html')
+    html_path = get_resource_path('viewer.html')
+    
+    settings = load_window_settings()
 
     window = webview.create_window(
         'Webtoon Pro Viewer', 
         html_path, 
         js_api=api,
-        width=690, 
-        height=1200
+        width=settings.get("width", 690), 
+        height=settings.get("height", 1200),
+        x=settings.get("x"),
+        y=settings.get("y")
     )
     
     api._window = window
-    webview.start(debug=False) # 디버그 모드 비활성화 (개발자 창 안 뜨게)
+    
+    # 창이 닫힐 때 설정 저장 (Closing 이벤트가 안전함)
+    window.events.closing += lambda: save_window_settings(window)
+    
+    webview.start(gui='qt', debug=False)
 
 if __name__ == '__main__':
     start_app()
