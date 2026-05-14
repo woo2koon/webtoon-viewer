@@ -10,12 +10,26 @@ def get_resource_path(relative_path):
         return os.path.join(sys._MEIPASS, relative_path)
     return os.path.join(os.path.dirname(os.path.abspath(__file__)), relative_path)
 
-# 설정 파일 경로 (사용자 문서 폴더 등에 저장하는 것이 안전하지만, 일단 실행 파일 경로 근처로 지정)
-SETTINGS_FILE = os.path.join(os.path.expanduser("~"), ".webtoon_pro_viewer_settings.json")
+# 설정 및 데이터 저장 경로 (현재 폴더의 .settings 폴더에 저장)
+def get_app_dir():
+    if hasattr(sys, 'frozen'):
+        return os.path.dirname(sys.executable)
+    return os.path.dirname(os.path.abspath(__file__))
+
+BASE_DIR = get_app_dir()
+SETTINGS_DIR = os.path.join(BASE_DIR, ".settings")
+SETTINGS_FILE = os.path.join(SETTINGS_DIR, "settings.json")
+STORAGE_PATH = os.path.join(SETTINGS_DIR, "web_storage")
+
+if not os.path.exists(SETTINGS_DIR):
+    os.makedirs(SETTINGS_DIR)
 
 class ViewerAPI:
     def __init__(self):
         self._window = None 
+
+    def get_settings(self):
+        return load_all_settings()
 
     def open_folder_dialog(self):
         result = self._window.create_file_dialog(webview.FileDialog.FOLDER)
@@ -67,55 +81,112 @@ class ViewerAPI:
             print(f"❌ 저장 실패: {e}")
             return False
 
+    def save_settings(self, settings):
+        try:
+            current = load_all_settings()
+            self._deep_update(current, settings)
+            save_all_settings(current)
+            print(f"✅ 설정 저장 완료: {settings}")
+            return True
+        except Exception as e:
+            print(f"설정 저장 실패: {e}")
+            return False
+
+    def _deep_update(self, source, overrides):
+        for key, value in overrides.items():
+            if isinstance(value, dict) and value and key in source and isinstance(source[key], dict):
+                self._deep_update(source[key], value)
+            else:
+                source[key] = value
+        return source
+
     def debug_log(self, msg):
         # print(f"[JS DEBUG] {msg}")
         return True
 
-def load_window_settings():
+def load_all_settings():
+    default_settings = {
+        "window": {"width": 690, "height": 1200, "x": None, "y": None},
+        "app": {
+            "darkMode": False,
+            "spacingCollapsed": True,
+            "viewMode": "fit",
+            "widthScale": "100",
+            "scrollAccel": False,
+            "stepScroll": True,
+            "stepAmount": 100,
+            "minimapEnabled": True
+        },
+        "resume": {}
+    }
     try:
         if os.path.exists(SETTINGS_FILE):
+            if os.path.getsize(SETTINGS_FILE) == 0:
+                return default_settings
             with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
+                try:
+                    saved = json.load(f)
+                    # 단순 업데이트가 아닌 딕셔너리 병합
+                    for key in default_settings:
+                        if key in saved:
+                            if isinstance(default_settings[key], dict) and isinstance(saved[key], dict):
+                                default_settings[key].update(saved[key])
+                            else:
+                                default_settings[key] = saved[key]
+                except json.JSONDecodeError:
+                    print("⚠️ 설정 파일이 손상되어 기본 설정을 사용합니다.")
+                    return default_settings
+            return default_settings
     except Exception as e:
         print(f"설정 로드 실패: {e}")
-    return {"width": 690, "height": 1200, "x": None, "y": None}
+    return default_settings
 
-def save_window_settings(window):
+def save_all_settings(settings):
     try:
-        settings = {
+        with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
+            json.dump(settings, f, indent=4)
+    except Exception as e:
+        print(f"설정 파일 저장 실패: {e}")
+
+def sync_window_settings(window):
+    try:
+        settings = load_all_settings()
+        settings["window"] = {
             "width": window.width,
             "height": window.height,
             "x": window.x,
             "y": window.y
         }
-        with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
-            json.dump(settings, f, indent=4)
-        print("✅ 창 설정 저장 완료")
+        save_all_settings(settings)
+        # print("✅ 창 설정 저장 완료")
     except Exception as e:
-        print(f"창 설정 저장 실패: {e}")
+        print(f"창 설정 동기화 실패: {e}")
 
 def start_app():
     api = ViewerAPI()
     html_path = get_resource_path('viewer.html')
     
-    settings = load_window_settings()
+    settings = load_all_settings()
+    window_cfg = settings.get("window", {})
 
     window = webview.create_window(
         'Webtoon Pro Viewer', 
         html_path, 
         js_api=api,
-        width=settings.get("width", 690), 
-        height=settings.get("height", 1200),
-        x=settings.get("x"),
-        y=settings.get("y")
+        width=int(window_cfg.get("width", 690)), 
+        height=int(window_cfg.get("height", 1200)),
+        x=window_cfg.get("x"),
+        y=window_cfg.get("y")
     )
     
     api._window = window
     
-    # 창이 닫힐 때 설정 저장 (Closing 이벤트가 안전함)
-    window.events.closing += lambda: save_window_settings(window)
+    # 창 설정 실시간 동기화
+    window.events.resized += lambda: sync_window_settings(window)
+    window.events.moved += lambda: sync_window_settings(window)
+    window.events.closing += lambda: sync_window_settings(window)
     
-    webview.start(gui='qt', debug=False)
+    webview.start(debug=False, storage_path=STORAGE_PATH)
 
 if __name__ == '__main__':
     start_app()

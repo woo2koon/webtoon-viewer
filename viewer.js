@@ -272,52 +272,73 @@ function updateMinimapUI(enabled) {
     }
 }
 
-function loadSettings() {
-    const isDark = localStorage.getItem('darkMode') === 'true';
-    if (isDark) { body.classList.add('dark-mode'); document.getElementById('toggle-dark').checked = true; }
+async function loadSettings() {
+    if (!window.pywebview || !window.pywebview.api) {
+        tLog("⚠️ pywebview API not found in loadSettings");
+        return;
+    }
     
-    const savedSpacing = localStorage.getItem('spacingCollapsed');
-    const isSpacingCollapsed = savedSpacing === null ? true : (savedSpacing === 'true');
+    const settings = await window.pywebview.api.get_settings();
+    const app = settings.app || {};
+    tLog(`⚙️ 로드된 설정: ${JSON.stringify(app)}`);
+
+    // 1. 다크 모드
+    const isDark = app.darkMode === true;
+    body.classList.toggle('dark-mode', isDark);
+    const darkToggle = document.getElementById('toggle-dark');
+    if (darkToggle) darkToggle.checked = isDark;
     
+    // 2. 간격 제거
+    const isSpacingCollapsed = app.spacingCollapsed !== false;
     body.classList.toggle('spacing-collapsed', isSpacingCollapsed);
     const spacingToggle = document.getElementById('toggle-spacing');
     if(spacingToggle) spacingToggle.checked = isSpacingCollapsed;
 
-    const viewMode = localStorage.getItem('viewMode') || 'fit';
+    // 3. 보기 모드
+    const viewMode = app.viewMode || 'fit';
     if (viewMode === 'original') {
         body.classList.add('view-mode-original');
         document.getElementById('btn-original').classList.add('active');
         document.getElementById('btn-fit').classList.remove('active');
+    } else {
+        body.classList.remove('view-mode-original');
+        document.getElementById('btn-fit').classList.add('active');
+        document.getElementById('btn-original').classList.remove('active');
     }
 
-    const savedWidthScale = localStorage.getItem('widthScale') || '100';
+    // 4. 가로 크기
+    const savedWidthScale = app.widthScale || '100';
     document.documentElement.style.setProperty('--container-width', `${690 * (savedWidthScale/100)}px`);
-    document.getElementById('width-slider').value = savedWidthScale;
-    document.getElementById('width-value').textContent = `${savedWidthScale}%`;
+    const widthSlider = document.getElementById('width-slider');
+    if (widthSlider) widthSlider.value = savedWidthScale;
+    const widthValue = document.getElementById('width-value');
+    if (widthValue) widthValue.textContent = `${savedWidthScale}%`;
 
-    const savedAccel = localStorage.getItem('scrollAccel') === 'true';
-    isAccelEnabled = savedAccel;
+    // 5. 스크롤 가속
+    isAccelEnabled = app.scrollAccel === true;
     const accelToggle = document.getElementById('toggle-accel');
-    if(accelToggle) accelToggle.checked = savedAccel;
+    if(accelToggle) accelToggle.checked = isAccelEnabled;
 
-    const savedStep = localStorage.getItem('stepScroll');
-    isStepScrollEnabled = savedStep === null ? true : (savedStep === 'true');
+    // 6. 스텝 스크롤
+    isStepScrollEnabled = app.stepScroll !== false;
     const stepToggle = document.getElementById('toggle-step-scroll');
     if(stepToggle) {
         stepToggle.checked = isStepScrollEnabled;
-        document.getElementById('step-slider-container').style.display = isStepScrollEnabled ? 'block' : 'none';
+        const stepSliderContainer = document.getElementById('step-slider-container');
+        if (stepSliderContainer) stepSliderContainer.style.display = isStepScrollEnabled ? 'block' : 'none';
     }
 
-    const savedStepAmount = localStorage.getItem('stepAmount') || '100';
-    stepAmount = parseInt(savedStepAmount);
+    // 7. 스텝 거리
+    stepAmount = parseInt(app.stepAmount || '100');
     const stepSlider = document.getElementById('step-slider');
     if(stepSlider) {
-        stepSlider.value = savedStepAmount;
-        document.getElementById('step-value').textContent = `${savedStepAmount}px`;
+        stepSlider.value = stepAmount;
+        const stepVal = document.getElementById('step-value');
+        if (stepVal) stepVal.textContent = `${stepAmount}px`;
     }
 
-    const savedMinimap = localStorage.getItem('minimapEnabled');
-    const isMinimapEnabled = savedMinimap === null ? true : (savedMinimap === 'true');
+    // 8. 미니맵
+    isMinimapEnabled = app.minimapEnabled !== false;
     const minimapToggle = document.getElementById('toggle-minimap');
     if(minimapToggle) {
         minimapToggle.checked = isMinimapEnabled;
@@ -479,7 +500,8 @@ async function processPythonFiles(fileObjects, folderPath) {
     if (typeof updateMinimapUI === 'function') updateMinimapUI(isMinimapEnabled);
     setupScrollObserver();
 
-    const savedPos = localStorage.getItem(`resume_${currentFileKey}`);
+    const settings = await window.pywebview.api.get_settings();
+    const savedPos = settings.resume ? settings.resume[currentFileKey] : null;
     if (savedPos) window.scrollTo(0, parseInt(savedPos));
 }
 
@@ -530,17 +552,14 @@ async function startProcess(files) {
         totalFiles = imageBlobs.length;
         currentFileKey = fileKey;
 
-        isMinimapEnabled = localStorage.getItem('minimapEnabled') !== 'false';
+        const settings = await window.pywebview.api.get_settings();
+        isMinimapEnabled = settings.app ? settings.app.minimapEnabled !== false : true;
         updateMinimapUI(isMinimapEnabled);
         pageIndicator.style.display = 'block';
         updatePageIndicator(1);
         
         await processImagesInBatches(imageBlobs);
         body.classList.add('has-images'); 
-        
-        const savedMinimap = localStorage.getItem('minimapEnabled');
-        isMinimapEnabled = savedMinimap === null ? true : (savedMinimap === 'true');
-        updateMinimapUI(isMinimapEnabled);
         
         checkResumeHistory(fileKey);
         setupScrollObserver();
@@ -619,8 +638,9 @@ async function unzipFiles(file) {
 // ============================================================
 //  6. UI 유틸리티
 // ============================================================
-function checkResumeHistory(key) {
-    const saved = localStorage.getItem(`resume_${key}`);
+async function checkResumeHistory(key) {
+    const settings = await window.pywebview.api.get_settings();
+    const saved = settings.resume ? settings.resume[key] : null;
     if (saved && parseInt(saved) > 100) {
         resumeModal.style.display = 'flex';
         btnResumeYes.onclick = () => {
@@ -633,9 +653,12 @@ function checkResumeHistory(key) {
 
 window.addEventListener('scroll', () => {
     if (scrollSaveTimer) clearTimeout(scrollSaveTimer);
-    scrollSaveTimer = setTimeout(() => {
-        if (currentFileKey && window.scrollY > 100) {
-            localStorage.setItem(`resume_${currentFileKey}`, parseInt(window.scrollY));
+    scrollSaveTimer = setTimeout(async () => {
+        if (currentFileKey && window.scrollY > 100 && window.pywebview && window.pywebview.api) {
+            const settings = await window.pywebview.api.get_settings();
+            if (!settings.resume) settings.resume = {};
+            settings.resume[currentFileKey] = parseInt(window.scrollY);
+            window.pywebview.api.save_settings(settings);
         }
     }, 500);
 });
@@ -670,23 +693,23 @@ function updatePageIndicator(curr) { pageIndicator.textContent = `${curr} / ${to
 
 document.getElementById('toggle-dark').onchange = (e) => {
     body.classList.toggle('dark-mode', e.target.checked);
-    localStorage.setItem('darkMode', e.target.checked);
+    window.pywebview.api.save_settings({ app: { darkMode: e.target.checked } });
 };
 document.getElementById('toggle-spacing').onchange = (e) => {
     body.classList.toggle('spacing-collapsed', e.target.checked);
-    localStorage.setItem('spacingCollapsed', e.target.checked);
+    window.pywebview.api.save_settings({ app: { spacingCollapsed: e.target.checked } });
 };
 document.getElementById('btn-fit').onclick = () => {
     body.classList.remove('view-mode-original');
     document.getElementById('btn-fit').classList.add('active');
     document.getElementById('btn-original').classList.remove('active');
-    localStorage.setItem('viewMode', 'fit');
+    window.pywebview.api.save_settings({ app: { viewMode: 'fit' } });
 };
 document.getElementById('btn-original').onclick = () => {
     body.classList.add('view-mode-original');
     document.getElementById('btn-original').classList.add('active');
     document.getElementById('btn-fit').classList.remove('active');
-    localStorage.setItem('viewMode', 'original');
+    window.pywebview.api.save_settings({ app: { viewMode: 'original' } });
 };
 // ============================================================
 //  크기 조절 시 스크롤 위치 완벽 보존 (Time-Travel Math Anchor)
@@ -777,7 +800,7 @@ document.getElementById('width-slider').oninput = (e) => {
     const val = e.target.value;
     document.documentElement.style.setProperty('--container-width', `${690 * (val/100)}px`);
     document.getElementById('width-value').textContent = `${val}%`;
-    localStorage.setItem('widthScale', val);
+    window.pywebview.api.save_settings({ app: { widthScale: val } });
     
     // 변경 직후 즉시(동기적으로) 수학적 위치 복원
     applyMathAnchor(anchor);
@@ -807,7 +830,8 @@ window.addEventListener('resize', () => {
 // 미니맵 토글 이벤트
 document.getElementById('toggle-minimap').onchange = (e) => {
     const enabled = e.target.checked;
-    localStorage.setItem('minimapEnabled', enabled);
+    isMinimapEnabled = enabled;
+    window.pywebview.api.save_settings({ app: { minimapEnabled: enabled } });
     updateMinimapUI(enabled);
 };
 
@@ -975,12 +999,12 @@ const stepSlider = document.getElementById('step-slider');
 if (accelToggle) {
     accelToggle.onchange = (e) => {
         isAccelEnabled = e.target.checked;
-        localStorage.setItem('scrollAccel', isAccelEnabled);
+        window.pywebview.api.save_settings({ app: { scrollAccel: isAccelEnabled } });
         
         if (isAccelEnabled) {
             // 스텝 스크롤 해제
             isStepScrollEnabled = false;
-            localStorage.setItem('stepScroll', false);
+            window.pywebview.api.save_settings({ app: { stepScroll: false } });
             if(stepToggle) {
                 stepToggle.checked = false;
                 document.getElementById('step-slider-container').style.display = 'none';
@@ -994,12 +1018,12 @@ if (accelToggle) {
 if (stepToggle) {
     stepToggle.onchange = (e) => {
         isStepScrollEnabled = e.target.checked;
-        localStorage.setItem('stepScroll', isStepScrollEnabled);
+        window.pywebview.api.save_settings({ app: { stepScroll: isStepScrollEnabled } });
         
         if (isStepScrollEnabled) {
             // 가속 스크롤 해제
             isAccelEnabled = false;
-            localStorage.setItem('scrollAccel', false);
+            window.pywebview.api.save_settings({ app: { scrollAccel: false } });
             if(accelToggle) accelToggle.checked = false;
             scrollVelocityY = 0; scrollVelocityX = 0;
             document.getElementById('step-slider-container').style.display = 'block';
@@ -1013,7 +1037,7 @@ if (stepSlider) {
     stepSlider.oninput = (e) => {
         stepAmount = parseInt(e.target.value);
         document.getElementById('step-value').textContent = `${stepAmount}px`;
-        localStorage.setItem('stepAmount', stepAmount);
+        window.pywebview.api.save_settings({ app: { stepAmount: stepAmount } });
     };
 }
 
@@ -1229,25 +1253,11 @@ async function tLog(msg) {
     // 더이상 파이썬 터미널에 로그를 남기지 않습니다.
 }
 
-function showToast(message) {
-    tLog(`Toast: ${message}`);
-    const toast = document.getElementById('toast-message');
-    if (!toast) return;
-    toast.textContent = message;
-    toast.classList.add('show');
-    
-    // 이전 타이머가 있다면 제거
-    if (toast.timeoutId) clearTimeout(toast.timeoutId);
-    
-    toast.timeoutId = setTimeout(() => {
-        toast.classList.remove('show');
-    }, 2500);
-}
 
-(async () => {
+async function initialize() {
     try {
-        await tLog("🚀 Script initialization started...");
-        loadSettings();
+        await tLog("🚀 Starting initialization...");
+        await loadSettings();
         restoreSliderLabels();
         updateScroll();
         await tLog("✅ Initialization completed successfully.");
@@ -1255,4 +1265,10 @@ function showToast(message) {
         await tLog(`❌ Initialization failed: ${e.message}`);
         console.error(e);
     }
-})();
+}
+
+if (window.pywebview && window.pywebview.api) {
+    initialize();
+} else {
+    window.addEventListener('pywebviewready', initialize);
+}
