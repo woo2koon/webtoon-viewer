@@ -403,6 +403,9 @@ function updateMinimapUI(enabled) {
         trigger.style.setProperty('display', 'block', 'important');
         sidebar.style.removeProperty('transform'); 
         
+        // 핀 상태 동기화
+        body.classList.toggle('minimap-pinned', isMinimapPinned);
+        
         // 핀 버튼 동적 추가
         let pinBtn = document.getElementById('btn-pin-minimap');
         if (!pinBtn) {
