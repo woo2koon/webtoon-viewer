@@ -2,29 +2,43 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>로컬 웹툰 뷰어 (Pro)</title>
+    <link rel="preload" href="fonts/Pretendard-Regular.woff2" as="font" type="font/woff2" crossorigin>
+    <link rel="preload" href="fonts/Pretendard-Bold.woff2" as="font" type="font/woff2" crossorigin>
+    <title>Webtoon Viewer Pro</title>
     <link rel="icon" href="data:,">
     
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Nanum+Gothic:wght@400;700&display=swap" rel="stylesheet">
-    
-    <script src="jszip.min.js"></script>
+        <script src="jszip.min.js"></script>
     <script src="html2canvas.min.js"></script>
 
     <style>
+        /* 로컬 폰트 정의 */
+        @font-face {
+            font-family: 'Pretendard';
+            font-weight: 400;
+            font-style: normal;
+            font-display: block;
+            src: url('fonts/Pretendard-Regular.woff2') format('woff2');
+        }
+        @font-face {
+            font-family: 'Pretendard';
+            font-weight: 700;
+            font-style: normal;
+            font-display: block;
+            src: url('fonts/Pretendard-Bold.woff2') format('woff2');
+        }
+
         :root {
             --bg-color: #f0f0f0;
             --text-color: #333;
             --panel-bg: #222; 
-            /* [수정] 눈이 편안한 차분한 초록색으로 변경 */
-            --accent-color: #3fa965; 
+            /* [수정] 눈이 편안한 차분한 파란색으로 변경 */
+            --accent-color: #007aff; 
             --container-width: 690px;
         }
 
         body {
             margin: 0; padding: 0; background-color: var(--bg-color); color: var(--text-color);
-            font-family: 'Nanum Gothic', sans-serif;
+            font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Malgun Gothic", sans-serif;
             min-height: 100vh; 
             overflow-y: scroll; 
             /* hidden을 auto로 변경하여 가로 스크롤을 허용합니다 */
@@ -87,35 +101,36 @@
             position: fixed; 
             top: 80px; 
             left: 80px; /* 버튼 라인에 맞춰서 정렬 */
-            width: 280px;
-            background-color: var(--panel-bg); color: #fff; padding: 25px;
+            width: 240px;
+            background-color: var(--panel-bg); color: #fff; padding: 16px 20px;
             border-radius: 12px; z-index: 199; display: none; 
             box-shadow: 0 10px 30px rgba(0,0,0,0.6);
             border: 1px solid #444;
         }
         #settings-panel.show { display: block; }
 
-        .panel-title { font-size: 18px; font-weight: bold; margin-bottom: 20px; display: flex; align-items: center; gap: 8px; color: #ddd; }
+        .panel-title { font-size: 17px; font-weight: bold; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; color: #ddd; }
         
         .action-btn { 
-            width: 100%; padding: 14px; margin-bottom: 10px; 
+            width: 100%; padding: 10px 12px; margin-bottom: 6px; 
             border: none; border-radius: 8px; cursor: pointer; 
             font-weight: bold; font-size: 14px; display: flex; align-items: center; justify-content: center; gap: 8px;
-            transition: 0.2s;
+            transition: background-color 0.2s, filter 0.2s, border-color 0.2s;
+            white-space: nowrap;
         }
         .btn-primary { background-color: var(--accent-color); color: white; }
         .btn-primary:hover { filter: brightness(1.1); }
         .btn-secondary { background-color: #444; color: #ccc; }
         .btn-secondary:hover { background-color: #555; }
 
-        .group-label { font-size: 13px; color: #aaa; margin-top: 20px; margin-bottom: 8px; display: flex; justify-content: space-between; }
+        .group-label { font-size: 13px; color: #aaa; margin-top: 14px; margin-bottom: 6px; display: flex; justify-content: space-between; }
         
         .toggle-row {
             display: flex; justify-content: space-between; align-items: center;
-            padding: 12px 0; border-bottom: 1px solid #333; cursor: pointer;
+            padding: 10px 0; border-bottom: 1px solid #333; cursor: pointer;
         }
         .toggle-row:last-child { border-bottom: none; }
-        .toggle-text { font-size: 15px; font-weight: 500; }
+        .toggle-text { font-size: 14px; font-weight: 500; }
 
         /* 토글 스위치 CSS */
         .toggle-switch {
@@ -133,24 +148,21 @@
         .toggle-switch:checked::after { transform: translateX(20px); }
 
         /* 슬라이더 영역 */
-        .btn-group { display: flex; gap: 10px; margin-bottom: 10px; }
+        .btn-group { display: flex; gap: 10px; margin-bottom: 6px; }
         .size-select-btn { 
             flex: 1; 
-            /* [수정] 위아래 여백을 12px로 늘려 글자가 답답해 보이지 않게 합니다 */
-            padding: 12px 10px; 
+            padding: 8px 10px; 
             background: #333; 
             border: 1px solid #444; 
             color: #888; 
             border-radius: 6px; 
             cursor: pointer; 
             font-weight: bold; 
-            
-            /* [추가] 글자 크기를 16px로 설정하여 가독성을 높입니다 */
-            font-size: 16px; 
+            font-size: 14px; 
         }
         .size-select-btn.active { background: var(--accent-color); color: white; border-color: var(--accent-color); }
         
-        input[type=range] { width: 100%; accent-color: var(--accent-color); cursor: pointer; margin-top: 10px; }
+        input[type=range] { width: 100%; accent-color: var(--accent-color); cursor: pointer; margin-top: 6px; }
         .slider-labels { display: flex; justify-content: space-between; font-size: 11px; color: #777; margin-top: 5px; font-weight: bold; }
 
         /* 로딩 화면 & 게이지바 */
@@ -184,7 +196,11 @@
         #hidden-file-input, #hidden-folder-input { display: none; }
         
         /* [수정] 초기 안내 메시지 간격 조정 */
-        #message-box { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; color: #888; }
+        #message-box { 
+            position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); 
+            text-align: center; color: #888; 
+            width: calc(100% - 40px); max-width: 340px; box-sizing: border-box; 
+        }
         #message-box h2 { 
             font-size: 28px; 
             margin-bottom: 30px; /* 제목과 설명 사이 간격을 넓힘 */
@@ -203,8 +219,8 @@
         
         #selection-box {
             position: absolute;
-            border: 2px dashed #3fa965;
-            background: rgba(63, 169, 101, 0.2);
+            border: 2px dashed #007aff;
+            background: rgba(0, 122, 255, 0.2);
             display: none;
             z-index: 10000;
             pointer-events: none;
@@ -231,9 +247,99 @@
             -webkit-user-drag: none;
         }
 
+        /* 아이콘 공통 스타일 */
+        .icon {
+            width: 18px;
+            height: 18px;
+            stroke: currentColor;
+            stroke-width: 2;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+            fill: none;
+            vertical-align: middle;
+            flex-shrink: 0;
+            display: inline-block;
+            pointer-events: none;
+        }
+        .icon.spin {
+            animation: icon-spin 1s linear infinite;
+        }
+        @keyframes icon-spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        /* 커스텀 드롭다운 */
+        .custom-dropdown {
+            position: relative;
+            user-select: none;
+        }
+        .dropdown-trigger {
+            background: #333;
+            color: #ccc;
+            border: 1px solid #444;
+            border-radius: 6px;
+            padding: 5px 10px;
+            font-weight: bold;
+            cursor: pointer;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            min-width: 60px;
+            gap: 6px;
+            transition: border-color 0.2s, background-color 0.2s;
+        }
+        .dropdown-trigger:hover {
+            border-color: var(--accent-color);
+            background: #3c3c3c;
+        }
+        .dropdown-options {
+            display: none;
+            position: absolute;
+            top: calc(100% + 4px);
+            right: 0;
+            background: #2a2a2a;
+            border: 1px solid #444;
+            border-radius: 8px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+            z-index: 1000;
+            overflow: hidden;
+            min-width: 80px;
+            animation: fadeInDropdown 0.15s ease-out;
+        }
+        @keyframes fadeInDropdown {
+            from { opacity: 0; transform: translateY(-4px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .dropdown-option {
+            padding: 8px 14px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: bold;
+            color: #ccc;
+            transition: background 0.15s, color 0.15s;
+        }
+        .dropdown-option:hover {
+            background: var(--accent-color);
+            color: #fff;
+        }
+        .dropdown-option.active {
+            background: rgba(0, 122, 255, 0.2);
+            color: var(--accent-color);
+        }
+        .custom-dropdown.open .dropdown-options {
+            display: block;
+        }
+        .custom-dropdown.open .dropdown-trigger svg {
+            transform: rotate(180deg);
+        }
+
     </style>
 </head>
 <body class="spacing-collapsed view-mode-fit">
+    <!-- 폰트 미리 로드 (메뉴 최초 오픈 시 글꼴 깜빡임/크기 변화 방지) -->
+    <div style="font-family: 'Pretendard'; font-weight: bold; position: absolute; visibility: hidden; pointer-events: none;">preload</div>
     
     <!-- 로딩 오버레이 제거됨 -->
 
@@ -245,7 +351,9 @@
 
     <!-- [추가] 드래그 앤 드롭 안내 오버레이 -->
     <div id="drop-overlay">
-        <div class="drop-icon">📥</div>
+        <div class="drop-icon">
+            <svg class="icon" style="width: 80px; height: 80px; stroke-width: 1.5;" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        </div>
         <div class="drop-text">파일이나 폴더를 여기에 드롭하세요</div>
     </div>
 
@@ -263,14 +371,25 @@
     <input type="file" id="hidden-file-input" multiple accept="image/*,.zip,.cbz">
     <input type="file" id="hidden-folder-input" webkitdirectory directory multiple>
 
-    <button id="menu-btn">⚙</button>
+    <button id="menu-btn">
+        <svg class="icon" style="width: 24px; height: 24px;" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    </button>
     <div id="page-indicator">0 / 0</div>
 
     <div id="settings-panel">
-        <div class="panel-title">⚙ 메뉴</div>
+        <div class="panel-title">
+            <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            <span>메뉴</span>
+        </div>
         
-        <button id="menu-file-btn" class="action-btn btn-primary">📄 파일 열기 (이미지/Zip)</button>
-        <button id="menu-folder-btn" class="action-btn btn-secondary">📂 폴더 열기</button>
+        <button id="menu-file-btn" class="action-btn btn-primary">
+            <svg class="icon" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            <span>파일 열기 (이미지/Zip)</span>
+        </button>
+        <button id="menu-folder-btn" class="action-btn btn-secondary">
+            <svg class="icon" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+            <span>폴더 열기</span>
+        </button>
         
         <div class="group-label"><span>화면 크기</span><span id="width-value">100%</span></div>
         <div class="btn-group">
@@ -286,11 +405,31 @@
         </div>
 
         <div class="group-label"><span>도구</span></div>
-        <button id="btn-capture" class="action-btn btn-secondary">📸 현재 페이지 캡처</button>
-        <button id="btn-crop-capture" class="action-btn btn-secondary">✂️ 영역 지정 캡처</button>
+        <button id="btn-capture" class="action-btn btn-secondary">
+            <svg class="icon" viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+            <span>현재 화면 캡처 (C)</span>
+        </button>
+        <button id="btn-crop-capture" class="action-btn btn-secondary">
+            <svg class="icon" viewBox="0 0 24 24"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></svg>
+            <span>영역 지정 캡처 (X)</span>
+        </button>
+        <div class="toggle-row" style="border-bottom: none;">
+            <span class="toggle-text">캡처 저장 포맷</span>
+            <div class="custom-dropdown" id="dropdown-capture-format">
+                <div class="dropdown-trigger">
+                    <span id="selected-format-label">PNG</span>
+                    <svg class="icon" style="width: 12px; height: 12px; transition: transform 0.2s;" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                </div>
+                <div class="dropdown-options">
+                    <div class="dropdown-option" data-value="png">PNG</div>
+                    <div class="dropdown-option" data-value="jpeg">JPG</div>
+                    <div class="dropdown-option" data-value="webp">WebP</div>
+                </div>
+            </div>
+        </div>
 
         
-        <div style="margin-top: 25px; border-top: 1px solid #333; padding-top: 10px;">
+        <div style="margin-top: 12px; border-top: 1px solid #333; padding-top: 6px;">
             <label class="toggle-row">
                 <span class="toggle-text">다크 모드</span>
                 <input type="checkbox" id="toggle-dark" class="toggle-switch">
@@ -307,7 +446,7 @@
                 <span class="toggle-text">빠른 스텝 스크롤 (Step)</span>
                 <input type="checkbox" id="toggle-step-scroll" class="toggle-switch" checked>
             </label>
-            <div id="step-slider-container" style="display: block; padding: 10px 0;">
+            <div id="step-slider-container" style="display: block; padding: 6px 0;">
                 <div class="group-label" style="margin-top:0;"><span>스텝 거리</span><span id="step-value">100px</span></div>
                 <input type="range" id="step-slider" min="50" max="500" value="100" step="50">
             </div>
@@ -326,11 +465,15 @@
 
     <div id="viewer-container">
         <div id="message-box">
-            <h2>웹툰 뷰어</h2>
-            <p>이미지, ZIP 파일, 또는 폴더를 열어주세요.</p>
-            <div style="display:flex; gap:10px; justify-content:center;">
-                <button id="center-file-btn" class="action-btn btn-primary" style="width:auto; padding: 10px 30px;">파일 열기</button>
-                <button id="center-folder-btn" class="action-btn btn-secondary" style="width:auto; padding: 10px 30px;">폴더 열기</button>
+            <div style="display:flex; flex-direction:column; gap:12px; align-items:center;">
+                <button id="center-file-btn" class="action-btn btn-primary" style="width:240px; padding: 12px 20px;">
+                    <svg class="icon" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                    <span>파일 열기 (이미지/ZIP 파일)</span>
+                </button>
+                <button id="center-folder-btn" class="action-btn btn-secondary" style="width:240px; padding: 12px 20px;">
+                    <svg class="icon" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                    <span>폴더 열기</span>
+                </button>
             </div>
         </div>
     </div>

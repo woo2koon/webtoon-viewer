@@ -3,6 +3,7 @@ import os
 import base64
 import json
 import sys
+import threading
 
 # PyInstaller 빌드 시 리소스 경로 처리를 위한 함수
 def get_resource_path(relative_path):
@@ -10,14 +11,14 @@ def get_resource_path(relative_path):
         return os.path.join(sys._MEIPASS, relative_path)
     return os.path.join(os.path.dirname(os.path.abspath(__file__)), relative_path)
 
-# 설정 및 데이터 저장 경로 (현재 폴더의 .settings 폴더에 저장)
-def get_app_dir():
-    if hasattr(sys, 'frozen'):
-        return os.path.dirname(sys.executable)
-    return os.path.dirname(os.path.abspath(__file__))
+# 설정 및 데이터 저장 경로 (윈도우의 LOCALAPPDATA 권한 허용 경로 사용)
+def get_settings_dir():
+    appdata = os.environ.get("LOCALAPPDATA")
+    if not appdata:
+        appdata = os.path.expanduser("~")
+    return os.path.join(appdata, "WebtoonViewerPro")
 
-BASE_DIR = get_app_dir()
-SETTINGS_DIR = os.path.join(BASE_DIR, ".settings")
+SETTINGS_DIR = get_settings_dir()
 SETTINGS_FILE = os.path.join(SETTINGS_DIR, "settings.json")
 STORAGE_PATH = os.path.join(SETTINGS_DIR, "web_storage")
 
@@ -75,10 +76,10 @@ class ViewerAPI:
             download_path = os.path.join(os.path.expanduser("~"), "Downloads", filename)
             with open(download_path, "wb") as f:
                 f.write(data)
-            print(f"✅ 저장 완료: {download_path}")
+            print(f"저장 완료: {download_path}")
             return True
         except Exception as e:
-            print(f"❌ 저장 실패: {e}")
+            print(f"저장 실패: {e}")
             return False
 
     def save_settings(self, settings):
@@ -86,7 +87,7 @@ class ViewerAPI:
             current = load_all_settings()
             self._deep_update(current, settings)
             save_all_settings(current)
-            print(f"✅ 설정 저장 완료: {settings}")
+            print(f"설정 저장 완료: {settings}")
             return True
         except Exception as e:
             print(f"설정 저장 실패: {e}")
@@ -104,6 +105,8 @@ class ViewerAPI:
         # print(f"[JS DEBUG] {msg}")
         return True
 
+settings_lock = threading.Lock()
+
 def load_all_settings():
     default_settings = {
         "window": {"width": 690, "height": 1200, "x": None, "y": None},
@@ -119,10 +122,17 @@ def load_all_settings():
         },
         "resume": {}
     }
-    try:
-        if os.path.exists(SETTINGS_FILE):
-            if os.path.getsize(SETTINGS_FILE) == 0:
+    with settings_lock:
+        try:
+            if not os.path.exists(SETTINGS_FILE) or os.path.getsize(SETTINGS_FILE) == 0:
+                # 설정 파일이 없거나 크기가 0이면 즉시 기본값으로 파일 생성
+                try:
+                    with open(SETTINGS_FILE, "w", encoding="utf-8") as wf:
+                        json.dump(default_settings, wf, indent=4)
+                except Exception as write_err:
+                    print(f"기본 설정 파일 생성 실패: {write_err}")
                 return default_settings
+
             with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
                 try:
                     saved = json.load(f)
@@ -134,22 +144,38 @@ def load_all_settings():
                             else:
                                 default_settings[key] = saved[key]
                 except json.JSONDecodeError:
-                    print("⚠️ 설정 파일이 손상되어 기본 설정을 사용합니다.")
+                    print("설정 파일이 손상되어 기본 설정을 사용합니다.")
+                    # 손상된 파일 자동 복구 (기본 설정으로 다시 저장)
+                    try:
+                        with open(SETTINGS_FILE, "w", encoding="utf-8") as wf:
+                            json.dump(default_settings, wf, indent=4)
+                    except Exception as write_err:
+                        print(f"설정 파일 복구 실패: {write_err}")
                     return default_settings
             return default_settings
-    except Exception as e:
-        print(f"설정 로드 실패: {e}")
-    return default_settings
+        except Exception as e:
+            print(f"설정 로드 실패: {e}")
+        return default_settings
 
 def save_all_settings(settings):
-    try:
-        with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
-            json.dump(settings, f, indent=4)
-    except Exception as e:
-        print(f"설정 파일 저장 실패: {e}")
+    with settings_lock:
+        try:
+            with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
+                json.dump(settings, f, indent=4)
+        except Exception as e:
+            print(f"설정 파일 저장 실패: {e}")
 
 def sync_window_settings(window):
     try:
+        # Windows 최소화 시 좌표가 -32000 부근으로 잡히는 현상 방지
+        if window.x is not None and window.x <= -32000:
+            return
+        if window.y is not None and window.y <= -32000:
+            return
+        # 창 크기가 비정상적으로 작아진 경우 저장하지 않음
+        if window.width < 200 or window.height < 200:
+            return
+
         settings = load_all_settings()
         settings["window"] = {
             "width": window.width,
@@ -170,7 +196,7 @@ def start_app():
     window_cfg = settings.get("window", {})
 
     window = webview.create_window(
-        'Webtoon Pro Viewer', 
+        'Webtoon Viewer Pro', 
         html_path, 
         js_api=api,
         width=int(window_cfg.get("width", 690)), 
@@ -186,7 +212,8 @@ def start_app():
     window.events.moved += lambda: sync_window_settings(window)
     window.events.closing += lambda: sync_window_settings(window)
     
-    webview.start(debug=False, storage_path=STORAGE_PATH)
+    is_frozen = hasattr(sys, 'frozen')
+    webview.start(debug=not is_frozen, storage_path=STORAGE_PATH, private_mode=False)
 
 if __name__ == '__main__':
     start_app()

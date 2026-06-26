@@ -32,7 +32,7 @@ stylePatch.innerHTML = `
         cursor: pointer;
         transition: border-color 0.2s;
     }
-    .nav-thumb-item.active { border: 2px solid #3fa965 !important; }
+    .nav-thumb-item.active { border: 2px solid #007aff !important; }
     .nav-thumb-item img {
         width: 100% !important;
         height: auto !important;
@@ -46,7 +46,7 @@ stylePatch.innerHTML = `
         font-size: 12px !important; font-weight: bold !important;
         box-shadow: 0 1px 2px rgba(0,0,0,0.5) !important;
     }
-    .nav-thumb-item.active .thumb-label { background: #3fa965 !important; color: #fff !important; }
+    .nav-thumb-item.active .thumb-label { background: #007aff !important; color: #fff !important; }
 
     /* 2. [핵심 수정] 메인 뷰어 컨테이너 */
     #viewer-container {
@@ -71,8 +71,6 @@ stylePatch.innerHTML = `
     #message-box {
         font-size: 16px !important; line-height: 1.5 !important; color: #888 !important;
     }
-    #message-box h2 { font-size: 28px !important; margin-bottom: 30px !important; color: #ddd !important; }
-    #message-box p { font-size: 16px !important; color: #888 !important; margin-bottom: 30px !important; }
 
     /* 3. 이미지 조각 스타일 (모드별 대응) */
     .viewer-image {
@@ -143,8 +141,8 @@ stylePatch.innerHTML = `
         border: 1px solid #444 !important;
         box-shadow: 0 10px 30px rgba(0,0,0,0.5) !important;
         border-radius: 12px !important;
-        padding: 20px !important;
-        width: 260px !important;
+        padding: 16px 20px !important;
+        width: 240px !important;
         color: #eee !important;
         position: fixed; top: 80px; left: 20px; z-index: 199; display: none;
     }
@@ -153,16 +151,16 @@ stylePatch.innerHTML = `
         color: #aaa !important;
         font-size: 13px !important;
         font-weight: bold !important;
-        margin-bottom: 10px !important;
+        margin-bottom: 6px !important;
     }
-    .btn-row { display: flex; gap: 8px; margin-bottom: 15px; }
+    .btn-row { display: flex; gap: 8px; margin-bottom: 10px; }
     .size-btn {
-        flex: 1; padding: 10px 0 !important; border-radius: 6px !important;
+        flex: 1; padding: 8px 0 !important; border-radius: 6px !important;
         border: none !important; background: #444 !important; color: #ccc !important;
         font-weight: bold !important; cursor: pointer; transition: 0.2s;
     }
-    .size-btn.active { background: #3fa965 !important; color: #fff !important; }
-    input[type=range] { width: 100%; accent-color: #3fa965 !important; cursor: pointer; }
+    .size-btn.active { background: #007aff !important; color: #fff !important; }
+    input[type=range] { width: 100%; accent-color: #007aff !important; cursor: pointer; }
     .slider-labels { display: flex; justify-content: space-between; font-size: 11px; color: #888; margin-top: 5px; font-weight: bold; }
 
     #settings-panel input[type="checkbox"] {
@@ -175,11 +173,11 @@ stylePatch.innerHTML = `
         background: white; border-radius: 50%; transition: transform 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
         box-shadow: 0 2px 4px rgba(0,0,0,0.2);
     }
-    #settings-panel input[type="checkbox"]:checked { background: #3fa965; }
+    #settings-panel input[type="checkbox"]:checked { background: #007aff; }
     #settings-panel input[type="checkbox"]:checked::after { transform: translateX(18px); }
     #settings-panel label {
         display: flex !important; justify-content: space-between !important;
-        align-items: center !important; margin-bottom: 12px !important; cursor: pointer;
+        align-items: center !important; margin-bottom: 8px !important; cursor: pointer;
     }
 
     /* 6. 토스트 알림 메시지 스타일 */
@@ -190,7 +188,7 @@ stylePatch.innerHTML = `
         transform: translateX(-50%) translateY(50px);
         background: rgba(30, 30, 30, 0.95);
         color: #fff;
-        padding: 14px 28px;
+        padding: 12px 24px;
         border-radius: 8px;
         font-size: 15px;
         font-weight: bold;
@@ -198,16 +196,51 @@ stylePatch.innerHTML = `
         opacity: 0;
         pointer-events: none;
         box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5);
-        border: 1px solid #3fa965; /* 진우님의 포인트 컬러 적용 */
+        border: 1px solid #007aff; /* 포인트 컬러 적용 */
         transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.4s;
+        display: flex;
+        align-items: center;
+        gap: 10px;
     }
     #toast-message.show {
         transform: translateX(-50%) translateY(0);
         opacity: 1;
     }
+
+    /* 7. 아이콘 공통 스타일 */
+    .icon {
+        width: 18px;
+        height: 18px;
+        stroke: currentColor;
+        stroke-width: 2;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        fill: none;
+        vertical-align: middle;
+        flex-shrink: 0;
+        display: inline-block;
+        pointer-events: none;
+    }
+    .icon.spin {
+        animation: icon-spin 1s linear infinite;
+    }
+    @keyframes icon-spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+    }
 `;
 document.head.appendChild(stylePatch);
 
+// ============================================================
+//  아이콘 데이터 정의 (SVG)
+// ============================================================
+const ICON_MAP = {
+    check: `<svg class="icon" viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>`,
+    alert: `<svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`,
+    x: `<svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>`,
+    camera: `<svg class="icon" viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>`,
+    loader: `<svg class="icon spin" viewBox="0 0 24 24"><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/></svg>`
+};
 
 // ============================================================
 //  1. DOM 요소 & 변수 선언
@@ -217,6 +250,7 @@ let isMinimapEnabled = true; // 여기에 한 번만 선언합니다.
 let createdUrls = [];
 let currentFileKey = "";
 let scrollSaveTimer = null;
+let currentCaptureFormat = "png";
 
 let scrollVelocityY = 0; // 수직 속도
 let scrollVelocityX = 0; // 수평 속도
@@ -344,6 +378,10 @@ async function loadSettings() {
         minimapToggle.checked = isMinimapEnabled;
         updateMinimapUI(isMinimapEnabled);
     }
+
+    // 9. 캡처 저장 포맷
+    currentCaptureFormat = app.captureFormat || "png";
+    updateCustomDropdownUI(currentCaptureFormat);
 }
 
 
@@ -500,9 +538,7 @@ async function processPythonFiles(fileObjects, folderPath) {
     if (typeof updateMinimapUI === 'function') updateMinimapUI(isMinimapEnabled);
     setupScrollObserver();
 
-    const settings = await window.pywebview.api.get_settings();
-    const savedPos = settings.resume ? settings.resume[currentFileKey] : null;
-    if (savedPos) window.scrollTo(0, parseInt(savedPos));
+    checkResumeHistory(currentFileKey);
 }
 
 
@@ -540,7 +576,7 @@ async function startProcess(files) {
             if (imgs.length === 0) throw new Error("인식 가능한 이미지 파일이 없습니다.");
             
             // [추가] 인식된 파일 개수를 사용자에게 알립니다.
-            showToast(`📸 ${imgs.length}개의 이미지를 불러옵니다.`);
+            showToast(`${imgs.length}개의 이미지를 불러옵니다.`, "camera");
             
             // 파일 이름 순서대로 정렬 (숫자 정렬 포함)
             imgs.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
@@ -566,7 +602,7 @@ async function startProcess(files) {
 
     } catch (err) {
         console.error("처리 오류:", err);
-        showToast("⚠️ 오류: " + err.message);
+        showToast("오류: " + err.message, "alert");
     }
 }
 
@@ -644,7 +680,16 @@ async function checkResumeHistory(key) {
     if (saved && parseInt(saved) > 100) {
         resumeModal.style.display = 'flex';
         btnResumeYes.onclick = () => {
-            window.scrollTo({ top: parseInt(saved), behavior: 'auto' });
+            const targetScrollY = parseInt(saved);
+            let attempts = 0;
+            const maxAttempts = 40; // 최대 4초간 100ms 간격으로 스크롤 시도
+            const interval = setInterval(() => {
+                window.scrollTo(0, targetScrollY);
+                attempts++;
+                if (Math.abs(window.scrollY - targetScrollY) < 5 || attempts >= maxAttempts) {
+                    clearInterval(interval);
+                }
+            }, 100);
             resumeModal.style.display = 'none';
         };
         btnResumeNo.onclick = () => { resumeModal.style.display = 'none'; };
@@ -654,10 +699,16 @@ async function checkResumeHistory(key) {
 window.addEventListener('scroll', () => {
     if (scrollSaveTimer) clearTimeout(scrollSaveTimer);
     scrollSaveTimer = setTimeout(async () => {
-        if (currentFileKey && window.scrollY > 100 && window.pywebview && window.pywebview.api) {
+        if (currentFileKey && window.pywebview && window.pywebview.api) {
             const settings = await window.pywebview.api.get_settings();
             if (!settings.resume) settings.resume = {};
-            settings.resume[currentFileKey] = parseInt(window.scrollY);
+            
+            const currentScrollY = parseInt(window.scrollY);
+            if (currentScrollY > 100) {
+                settings.resume[currentFileKey] = currentScrollY;
+            } else {
+                delete settings.resume[currentFileKey];
+            }
             window.pywebview.api.save_settings(settings);
         }
     }, 500);
@@ -667,7 +718,7 @@ menuBtn.onclick = () => {
     tLog("⚙️ 메뉴 버튼 클릭됨");
     settingsPanel.classList.toggle('show');
 };
-window.onclick = (e) => { if (!settingsPanel.contains(e.target) && e.target !== menuBtn) settingsPanel.classList.remove('show'); };
+window.onclick = (e) => { if (!settingsPanel.contains(e.target) && !menuBtn.contains(e.target)) settingsPanel.classList.remove('show'); };
 
 const observer = new IntersectionObserver((entries) => {
     entries.forEach(e => {
@@ -835,18 +886,82 @@ document.getElementById('toggle-minimap').onchange = (e) => {
     updateMinimapUI(enabled);
 };
 
+// 캡처 포맷 변경 이벤트
+function updateCustomDropdownUI(format) {
+    const label = document.getElementById('selected-format-label');
+    if (label) {
+        const textMap = { png: "PNG", jpeg: "JPG", webp: "WebP" };
+        label.textContent = textMap[format] || format.toUpperCase();
+    }
+    document.querySelectorAll('.dropdown-option').forEach(opt => {
+        if (opt.dataset.value === format) {
+            opt.classList.add('active');
+        } else {
+            opt.classList.remove('active');
+        }
+    });
+}
+
+// 커스텀 드롭다운 토글 및 옵션 선택 이벤트
+const customDropdown = document.getElementById('dropdown-capture-format');
+const dropdownTrigger = customDropdown ? customDropdown.querySelector('.dropdown-trigger') : null;
+
+if (dropdownTrigger) {
+    dropdownTrigger.onclick = (e) => {
+        e.stopPropagation();
+        customDropdown.classList.toggle('open');
+    };
+}
+
+document.querySelectorAll('.dropdown-option').forEach(opt => {
+    opt.onclick = (e) => {
+        e.stopPropagation();
+        const val = opt.dataset.value;
+        currentCaptureFormat = val;
+        updateCustomDropdownUI(val);
+        window.pywebview.api.save_settings({ app: { captureFormat: val } });
+        if (customDropdown) customDropdown.classList.remove('open');
+    };
+});
+
+window.addEventListener('click', () => {
+    if (customDropdown) customDropdown.classList.remove('open');
+});
+
 // 단축키 로직 수정 (기존 window.onkeydown을 찾아서 내용을 추가하세요)
 const originalOnKeyDown = window.onkeydown;
 window.onkeydown = (e) => {
+    // 포커스가 input이나 textarea에 있을 때는 단축키를 무시합니다.
+    const activeEl = document.activeElement;
+    if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.isContentEditable)) {
+        if (originalOnKeyDown) originalOnKeyDown(e);
+        return;
+    }
+
     // 기존 스크롤 로직 실행
     if (originalOnKeyDown) originalOnKeyDown(e);
 
+    const key = e.key.toLowerCase();
+
     // [추가] M 키를 누르면 미니맵 토글
-    if (e.key.toLowerCase() === 'm') {
+    if (key === 'm') {
         const toggle = document.getElementById('toggle-minimap');
-        toggle.checked = !toggle.checked;
-        // change 이벤트를 강제로 발생시켜 위의 onchange 로직이 실행되게 합니다.
-        toggle.dispatchEvent(new Event('change'));
+        if (toggle) {
+            toggle.checked = !toggle.checked;
+            toggle.dispatchEvent(new Event('change'));
+        }
+    }
+
+    // [추가] C 키를 누르면 현재 화면 캡처
+    if (key === 'c' && !(typeof isSelecting !== 'undefined' && isSelecting)) {
+        const btn = document.getElementById('btn-capture');
+        if (btn) btn.click();
+    }
+
+    // [추가] X 키를 누르면 영역 지정 캡처
+    if (key === 'x' && !(typeof isSelecting !== 'undefined' && isSelecting)) {
+        const btn = document.getElementById('btn-crop-capture');
+        if (btn) btn.click();
     }
 };
 
@@ -922,8 +1037,8 @@ async function getFilesFromEntries(entries) {
 // ============================================================
 //  토스트 알림(Toast Notification) 함수
 // ============================================================
-function showToast(message) {
-    tLog(`💬 토스트 알림: ${message}`);
+function showToast(message, iconKey = "check") {
+    tLog(`토스트 알림: ${message}`);
     let toast = document.getElementById('toast-message');
     
     if (!toast) {
@@ -932,7 +1047,8 @@ function showToast(message) {
         document.body.appendChild(toast);
     }
     
-    toast.textContent = message;
+    const iconHtml = ICON_MAP[iconKey] || ICON_MAP.check;
+    toast.innerHTML = `${iconHtml}<span>${message}</span>`;
     toast.classList.add('show');
     
     if (toast.timeoutId) clearTimeout(toast.timeoutId);
@@ -967,6 +1083,26 @@ function updateScroll() {
 }
 
 window.addEventListener('wheel', (e) => {
+    // 마우스가 미니맵(사이드바) 영역 내에 물리적으로 위치할 때 수동 스크롤 처리
+    const sidebar = document.getElementById('nav-sidebar');
+    if (sidebar) {
+        const rect = sidebar.getBoundingClientRect();
+        // 미니맵이 화면 안으로 들어와있는 상태이고, 마우스 포인터가 미니맵 영역 내부에 위치하는지 검사
+        if (rect.left < window.innerWidth) {
+            const isOverSidebar = (
+                e.clientX >= rect.left &&
+                e.clientX <= rect.right &&
+                e.clientY >= rect.top &&
+                e.clientY <= rect.bottom
+            );
+            if (isOverSidebar) {
+                e.preventDefault();
+                sidebar.scrollTop += e.deltaY;
+                return;
+            }
+        }
+    }
+
     // 1. 빠른 스텝 스크롤 처리
     if (isStepScrollEnabled) {
         e.preventDefault();
@@ -1061,8 +1197,8 @@ document.getElementById('btn-capture').onclick = async () => {
         await captureHighRes(viewportRect, "Pure");
 
     } catch (e) {
-        console.error("현재 페이지 캡처 실패:", e);
-        showToast("⚠️ 캡처 중 오류가 발생했습니다.");
+        console.error("현재 화면 캡처 실패:", e);
+        showToast("캡처 중 오류가 발생했습니다.", "alert");
     }
 };
 // ============================================================
@@ -1148,10 +1284,10 @@ window.addEventListener('mouseup', async (e) => {
  */
 async function captureHighRes(rect, type) {
     const btn = (type === "Crop") ? document.getElementById('btn-crop-capture') : document.getElementById('btn-capture');
-    const originalBtnText = btn.innerText;
+    const originalBtnHTML = btn.innerHTML;
     
     try {
-        btn.innerText = "⌛ 고화질 추출 중...";
+        btn.innerHTML = `${ICON_MAP.loader}<span>고화질 추출 중...</span>`;
         [menuBtn, pageIndicator].forEach(el => el.style.visibility = 'hidden');
 
         const pages = Array.from(document.querySelectorAll('.webtoon-page'));
@@ -1170,7 +1306,7 @@ async function captureHighRes(rect, type) {
         const finalHeight = finalBottom - finalTop;
 
         if (finalWidth <= 0 || finalHeight <= 0) {
-            showToast("⚠️ 캡처할 영역이 이미지 바깥입니다.");
+            showToast("캡처할 영역이 이미지 바깥입니다.", "alert");
             return;
         }
 
@@ -1206,35 +1342,41 @@ async function captureHighRes(rect, type) {
                 const srcH = relH * (page.naturalHeight / page.offsetHeight);
 
                 const destX = 0;
-                const destY = (intersectTop - finalTop) * scaleRatio;
+                const destY = Math.round((intersectTop - finalTop) * scaleRatio);
                 const destW = canvas.width;
-                const destH = (intersectBottom - intersectTop) * scaleRatio;
+                // 정수 픽셀 단위로 경계를 일치시켜 빈틈과 이미지 어긋남을 동시에 해결합니다.
+                const destH = Math.round((intersectBottom - finalTop) * scaleRatio) - destY;
 
                 ctx.drawImage(page, srcX, srcY, srcW, srcH, destX, destY, destW, destH);
             }
         }
 
-        const dataUrl = canvas.toDataURL("image/png");
+        const format = currentCaptureFormat || "png";
+        const mimeType = format === "jpeg" ? "image/jpeg" : `image/${format}`;
+        const dataUrl = canvas.toDataURL(mimeType);
+        
         const now = new Date();
         const timestamp = now.toISOString().slice(0,10).replace(/-/g,'') + "_" + 
                           now.getHours().toString().padStart(2,'0') + 
                           now.getMinutes().toString().padStart(2,'0') + 
                           now.getSeconds().toString().padStart(2,'0');
-        const filename = `Webtoon_${type}_${timestamp}.png`;
+        
+        const fileExt = format === "jpeg" ? "jpg" : format;
+        const filename = `Webtoon_${type}_${timestamp}.${fileExt}`;
 
         if (window.pywebview && window.pywebview.api) {
             const success = await window.pywebview.api.save_image(dataUrl, filename);
             if (success) {
-                showToast("📸 캡쳐 완료!");
+                showToast("캡쳐 완료!", "camera");
             } else {
-                showToast("❌ 저장에 실패했습니다.");
+                showToast("저장에 실패했습니다.", "x");
             }
         }
     } catch (err) {
         console.error("고화질 캡처 실패:", err);
-        showToast("⚠️ 캡처 중 오류가 발생했습니다.");
+        showToast("캡처 중 오류가 발생했습니다.", "alert");
     } finally {
-        btn.innerText = originalBtnText;
+        btn.innerHTML = originalBtnHTML;
         [menuBtn, pageIndicator].forEach(el => el.style.visibility = 'visible');
     }
 }
@@ -1244,7 +1386,7 @@ window.addEventListener('keydown', (e) => {
         isSelecting = false;
         document.body.classList.remove('selecting');
         if (selectionBox) selectionBox.style.display = 'none';
-        showToast("🚫 캡처가 취소되었습니다.");
+        showToast("캡처가 취소되었습니다.", "x");
     }
 });
 
