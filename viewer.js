@@ -555,8 +555,9 @@ function updateMinimapViewportIndicator() {
         }
     }
 
-    // 3. 미니맵 자동 스크롤 (마우스가 미니맵 위에 없을 때만 작동)
-    if (!sidebar.matches(':hover')) {
+    // 3. 미니맵 자동 스크롤 (마우스가 미니맵 위에 없고, 캡처 전환 애니메이션 중이 아닐 때만 작동)
+    const isTransitioning = document.body.classList.contains('selecting-transition');
+    if (!isTransitioning && !sidebar.matches(':hover')) {
         const anchor = typeof calculateRealTimeAnchor === 'function' ? calculateRealTimeAnchor() : null;
         if (anchor && thumbs[anchor.index]) {
             const targetThumb = thumbs[anchor.index];
