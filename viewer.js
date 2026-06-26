@@ -865,6 +865,7 @@ async function startProcess(files) {
         
         await processImagesInBatches(imageBlobs);
         body.classList.add('has-images'); 
+        updateMinimapUI(isMinimapEnabled);
         
         checkResumeHistory(fileKey);
         setupScrollObserver();
