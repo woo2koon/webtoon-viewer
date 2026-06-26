@@ -554,21 +554,6 @@ function updateMinimapViewportIndicator() {
             overlay.style.display = 'none';
         }
     }
-
-    // 3. 미니맵 자동 스크롤 (마우스가 미니맵 위에 없고, 캡처 전환 애니메이션 중이 아닐 때만 작동)
-    const isTransitioning = document.body.classList.contains('selecting-transition');
-    if (!isTransitioning && !sidebar.matches(':hover')) {
-        const mainScrollTop = window.pageYOffset || document.documentElement.scrollTop || 0;
-        const mainMaxScroll = document.documentElement.scrollHeight - window.innerHeight;
-        
-        if (mainMaxScroll > 0) {
-            const ratio = Math.max(0, Math.min(1, mainScrollTop / mainMaxScroll));
-            const sidebarMaxScroll = sidebar.scrollHeight - sidebar.clientHeight;
-            if (sidebarMaxScroll > 0) {
-                sidebar.scrollTop = ratio * sidebarMaxScroll;
-            }
-        }
-    }
 }
 
 let _minimapUpdatePending = false;
