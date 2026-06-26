@@ -71,6 +71,7 @@
             transform: translateX(100%); transition: transform 0.3s;
             display: flex; flex-direction: column; gap: 10px; padding: 15px 10px; box-sizing: border-box;
             overflow-y: auto;
+            position: relative; /* 자식 absolute 기준이 되기 위해 명시 */
         }
         #nav-trigger:hover ~ #nav-sidebar, #nav-sidebar:hover { transform: translateX(0); }
 
@@ -83,6 +84,7 @@
             background: rgba(0,0,0,0.8); color: white; border-radius: 4px;
             font-size: 11px; padding: 2px 6px; font-weight: bold; pointer-events: none;
         }
+
 
         /* 설정 패널 */
         #menu-btn {
@@ -478,6 +480,6 @@
         </div>
     </div>
     
-    <script src="viewer.js"></script>
+    <script src="viewer.js?v=20260626_3"></script>
 </body>
 </html>

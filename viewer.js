@@ -15,9 +15,80 @@ stylePatch.innerHTML = `
         border-left: 1px solid #333 !important;
         position: fixed; top: 0; right: 0; width: 100px; z-index: 301;
         transform: translateX(100%); transition: transform 0.3s;
+        
+        /* 스크롤바 숨기기 (영역 스크롤 기능은 유지) */
+        scrollbar-width: none !important; /* Firefox */
+        -ms-overflow-style: none !important; /* IE/Edge */
+    }
+    #nav-sidebar::-webkit-scrollbar {
+        display: none !important; /* Chrome, Safari, WebView2 */
     }
     #nav-trigger { position: fixed; top: 0; right: 0; bottom: 0; width: 20px; z-index: 300; display: none; }
     #nav-trigger:hover ~ #nav-sidebar, #nav-sidebar:hover { transform: translateX(0); }
+
+    /* 미니맵 고정 상태 레이아웃 */
+    body {
+        transition: padding-right 0.3s ease !important;
+    }
+    body.minimap-pinned {
+        padding-right: 100px !important;
+    }
+    body.minimap-pinned #nav-sidebar {
+        transform: translateX(0) !important;
+    }
+
+    /* 임시 레이아웃 변경 시 트랜지션 해제 클래스 */
+    body.no-transition, body.no-transition * {
+        transition: none !important;
+    }
+
+
+    /* 미니맵 고정(핀) 버튼 스타일 */
+    #btn-pin-minimap {
+        position: sticky !important;
+        top: 0px !important;
+        align-self: flex-end !important;
+        background: rgba(34, 34, 34, 0.85) !important;
+        border: 1px solid #444 !important;
+        border-radius: 50% !important;
+        width: 30px !important;
+        height: 30px !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        cursor: pointer !important;
+        color: #888 !important;
+        z-index: 100 !important;
+        margin-bottom: 8px !important;
+        flex-shrink: 0 !important;
+        transition: background-color 0.2s, color 0.2s, transform 0.2s !important;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.4) !important;
+    }
+    #btn-pin-minimap:hover {
+        background-color: #333 !important;
+        color: #fff !important;
+        transform: scale(1.1) !important;
+    }
+    #btn-pin-minimap.pinned {
+        color: #007aff !important;
+        background-color: rgba(0, 122, 255, 0.15) !important;
+        border-color: #007aff !important;
+    }
+
+    /* 개별 썸네일 내부의 뷰포트 시각화 오버레이 */
+    .thumb-viewport-overlay {
+        position: absolute !important;
+        left: 0 !important;
+        top: 0;
+        width: 100% !important;
+        height: 0;
+        border: 2px dashed #007aff !important;
+        background-color: rgba(0, 122, 255, 0.15) !important;
+        pointer-events: none !important;
+        z-index: 5 !important;
+        box-sizing: border-box !important;
+        display: none;
+    }
 
     .nav-thumb-item {
         position: relative !important;
@@ -183,9 +254,9 @@ stylePatch.innerHTML = `
     /* 6. 토스트 알림 메시지 스타일 */
     #toast-message {
         position: fixed;
-        bottom: 40px;
+        top: 45px;
         left: 50%;
-        transform: translateX(-50%) translateY(50px);
+        transform: translateX(-50%) translateY(-50px);
         background: rgba(30, 30, 30, 0.95);
         color: #fff;
         padding: 12px 24px;
@@ -228,6 +299,35 @@ stylePatch.innerHTML = `
         from { transform: rotate(0deg); }
         to { transform: rotate(360deg); }
     }
+
+    /* 8. 영역 지정 캡처 시 레이아웃 제어 (우선순위를 보장하기 위해 가장 하단에 정의) */
+    body.selecting:not(.minimap-pinned) {
+        padding-right: 0 !important;
+    }
+    body.selecting, body.selecting * {
+        transition: none !important;
+    }
+    body.selecting #nav-trigger {
+        display: none !important;
+    }
+    body.selecting:not(.minimap-pinned) #nav-sidebar {
+        transform: translateX(100%) !important;
+        pointer-events: none !important;
+    }
+    body.selecting.minimap-pinned #nav-sidebar {
+        pointer-events: none !important; /* 캡처 드래그 중 오동작 방지 */
+    }
+    body.selecting #viewer-container {
+        max-width: calc(var(--container-width) - 60px) !important;
+        width: calc(100% - 60px) !important;
+    }
+    /* 캡처 진입/탈출 시 컨테이너 너비만 부드럽게 애니메이션 */
+    body.selecting #viewer-container,
+    body.selecting-transition #viewer-container {
+        transition: width 0.15s ease-in-out, max-width 0.15s ease-in-out !important;
+    }
+
+
 `;
 document.head.appendChild(stylePatch);
 
@@ -239,7 +339,9 @@ const ICON_MAP = {
     alert: `<svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`,
     x: `<svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>`,
     camera: `<svg class="icon" viewBox="0 0 24 24"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>`,
-    loader: `<svg class="icon spin" viewBox="0 0 24 24"><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/></svg>`
+    loader: `<svg class="icon spin" viewBox="0 0 24 24"><line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/></svg>`,
+    pin: `<svg class="icon" viewBox="0 0 24 24" style="transform: rotate(0deg);"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-.44-1.24l-2.78-3.55A2 2 0 0 1 15 9.24V5a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2v4.24a2 2 0 0 1-.78 1.21l-2.78 3.55A2 2 0 0 0 5 15.24V17z"/></svg>`,
+    pinOff: `<svg class="icon" viewBox="0 0 24 24" style="transform: rotate(-45deg);"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-.44-1.24l-2.78-3.55A2 2 0 0 1 15 9.24V5a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2v4.24a2 2 0 0 1-.78 1.21l-2.78 3.55A2 2 0 0 0 5 15.24V17z"/></svg>`
 };
 
 // ============================================================
@@ -247,6 +349,7 @@ const ICON_MAP = {
 // ============================================================
 
 let isMinimapEnabled = true; // 여기에 한 번만 선언합니다.
+let isMinimapPinned = false; // 미니맵 고정(Lock) 여부
 let createdUrls = [];
 let currentFileKey = "";
 let scrollSaveTimer = null;
@@ -299,12 +402,160 @@ function updateMinimapUI(enabled) {
         // [수정] 트리거를 보여주고, 사이드바를 가로막던 !important 속성을 제거합니다.
         trigger.style.setProperty('display', 'block', 'important');
         sidebar.style.removeProperty('transform'); 
+        
+        // 핀 버튼 동적 추가
+        let pinBtn = document.getElementById('btn-pin-minimap');
+        if (!pinBtn) {
+            pinBtn = document.createElement('button');
+            pinBtn.id = 'btn-pin-minimap';
+            pinBtn.title = isMinimapPinned ? "미니맵 고정 해제" : "미니맵 고정";
+            
+            if (isMinimapPinned) {
+                pinBtn.classList.add('pinned');
+                pinBtn.innerHTML = ICON_MAP.pin;
+            } else {
+                pinBtn.innerHTML = ICON_MAP.pinOff;
+            }
+            
+            // 첫 번째 자식으로 핀 버튼 삽입
+            if (sidebar.firstChild) {
+                sidebar.insertBefore(pinBtn, sidebar.firstChild);
+            } else {
+                sidebar.appendChild(pinBtn);
+            }
+            
+            pinBtn.onclick = (e) => {
+                e.stopPropagation();
+                
+                // 핀 토글 직전 현재 스크롤 앵커(보고 있는 위치)를 수학적으로 계산
+                const anchor = calculateAnchorFromPast();
+                
+                // 레이아웃 변화가 즉시 일어나도록 트랜지션 임시 해제 클래스 추가
+                body.classList.add('no-transition');
+                
+                isMinimapPinned = !isMinimapPinned;
+                body.classList.toggle('minimap-pinned', isMinimapPinned);
+                pinBtn.classList.toggle('pinned', isMinimapPinned);
+                
+                window.pywebview.api.save_settings({ app: { minimapPinned: isMinimapPinned } });
+                
+                if (isMinimapPinned) {
+                    pinBtn.innerHTML = ICON_MAP.pin;
+                    pinBtn.title = "미니맵 고정 해제";
+                } else {
+                    pinBtn.innerHTML = ICON_MAP.pinOff;
+                    pinBtn.title = "미니맵 고정";
+                }
+                
+                // 브라우저 리플로우 강제 유도하여 컨테이너 너비 즉시 적용
+                body.offsetHeight;
+                
+                // 바뀐 가로 너비 기준에 맞춰 스크롤 위치 보정 및 복원
+                _lastScrollY = window.scrollY;
+                _lastInnerHeight = window.innerHeight;
+                const container = document.getElementById('viewer-container');
+                if (container) _lastContainerWidth = container.clientWidth;
+                
+                applyMathAnchor(anchor);
+                
+                // 트랜지션 클래스 제거
+                setTimeout(() => {
+                    body.classList.remove('no-transition');
+                }, 50);
+                
+                setTimeout(updateMinimapViewportIndicator, 100);
+            };
+        }
+        
+        // 미니맵 활성화 시 인디케이터 즉시 업데이트
+        setTimeout(updateMinimapViewportIndicator, 50);
     } else {
         // 미니맵 미사용 시: 트리거를 숨기고, 사이드바를 강제로 화면 밖(100%)으로 밀어냅니다.
         trigger.style.setProperty('display', 'none', 'important');
         sidebar.style.setProperty('transform', 'translateX(100%)', 'important');
+        
+        // 고정 클래스 제거
+        body.classList.remove('minimap-pinned');
+        
+        // 핀 버튼 제거
+        const pinBtn = document.getElementById('btn-pin-minimap');
+        if (pinBtn) pinBtn.remove();
+        
+        updateMinimapViewportIndicator(); // 각 썸네일별 오버레이 숨기기 유도
     }
 }
+
+// 미니맵 현재 뷰포트 시각화 인디케이터 업데이트 함수
+function updateMinimapViewportIndicator() {
+    const sidebar = document.getElementById('nav-sidebar');
+    if (!sidebar) return;
+
+    const pages = Array.from(document.querySelectorAll('.webtoon-page'));
+    const thumbs = Array.from(sidebar.querySelectorAll('.nav-thumb-item'));
+
+    // 미니맵 비활성화 혹은 이미지가 없는 경우 모든 개별 오버레이 제거/숨김
+    const hasImages = document.body.classList.contains('has-images');
+    if (!hasImages || !isMinimapEnabled || pages.length === 0 || thumbs.length === 0 || pages.length !== thumbs.length) {
+        thumbs.forEach(thumb => {
+            const overlay = thumb.querySelector('.thumb-viewport-overlay');
+            if (overlay) overlay.style.display = 'none';
+        });
+        return;
+    }
+
+    const scrollY = window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0;
+    const viewportHeight = window.innerHeight;
+    const scrollBottom = scrollY + viewportHeight;
+
+    // 1. 각 페이지의 top, bottom 절대 위치 (document 기준) 구하기
+    const pageOffsets = pages.map(page => {
+        const rect = page.getBoundingClientRect();
+        const top = rect.top + scrollY;
+        return {
+            top: top,
+            height: rect.height,
+            bottom: top + rect.height
+        };
+    });
+
+    // 2. 각 썸네일마다 뷰포트와 겹치는 영역 계산 및 오버레이 적용
+    for (let i = 0; i < pageOffsets.length; i++) {
+        const page = pageOffsets[i];
+        const thumb = thumbs[i];
+        
+        // 개별 오버레이 엘리먼트 획득 또는 동적 생성
+        let overlay = thumb.querySelector('.thumb-viewport-overlay');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.className = 'thumb-viewport-overlay';
+            thumb.appendChild(overlay);
+        }
+
+        // 현재 뷰포트 범위와 이 페이지가 겹치는지 체크
+        const overlapTop = Math.max(page.top, scrollY);
+        const overlapBottom = Math.min(page.bottom, scrollBottom);
+
+        if (overlapTop < overlapBottom && page.height > 0) {
+            // 겹치는 구간을 썸네일 내부 퍼센트 좌표로 환산
+            const visibleTopPercent = (overlapTop - page.top) / page.height;
+            const visibleBottomPercent = (overlapBottom - page.top) / page.height;
+
+            const topPercent = visibleTopPercent * 100;
+            const heightPercent = (visibleBottomPercent - visibleTopPercent) * 100;
+
+            overlay.style.top = `${topPercent}%`;
+            overlay.style.height = `${heightPercent}%`;
+            overlay.style.display = 'block';
+        } else {
+            // 전혀 겹치지 않는 페이지는 숨김
+            overlay.style.display = 'none';
+        }
+    }
+}
+
+// 스크롤 및 창 크기 조절 시 미니맵 뷰포트 표시 영역 실시간 업데이트
+window.addEventListener('scroll', updateMinimapViewportIndicator, { passive: true });
+window.addEventListener('resize', updateMinimapViewportIndicator, { passive: true });
 
 async function loadSettings() {
     if (!window.pywebview || !window.pywebview.api) {
@@ -373,6 +624,9 @@ async function loadSettings() {
 
     // 8. 미니맵
     isMinimapEnabled = app.minimapEnabled !== false;
+    isMinimapPinned = app.minimapPinned === true;
+    body.classList.toggle('minimap-pinned', isMinimapPinned);
+
     const minimapToggle = document.getElementById('toggle-minimap');
     if(minimapToggle) {
         minimapToggle.checked = isMinimapEnabled;
@@ -503,10 +757,22 @@ async function processPythonFiles(fileObjects, folderPath) {
         if (navSidebar) navSidebar.appendChild(thumbItem);
 
         // 썸네일 클릭 시 해당 이미지로 스크롤 이동
-        thumbItem.onclick = () => {
+        thumbItem.onclick = (e) => {
             document.querySelectorAll('.nav-thumb-item').forEach(el => el.classList.remove('active'));
             thumbItem.classList.add('active');
-            img.scrollIntoView({ behavior: 'auto', block: 'start' });
+
+            // 클릭된 Y 좌표 비율 계산
+            const rect = thumbItem.getBoundingClientRect();
+            const clickY = e.clientY - rect.top;
+            const clickRatio = Math.max(0, Math.min(1, clickY / rect.height));
+
+            // 메인 뷰어 상의 해당 이미지 절대 위치 및 높이 계산
+            const imgRect = img.getBoundingClientRect();
+            const imgTop = imgRect.top + (window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0);
+            const imgHeight = imgRect.height;
+
+            const targetScrollY = imgTop + clickRatio * imgHeight - window.innerHeight / 2;
+            window.scrollTo({ top: targetScrollY, behavior: 'auto' });
         };
 
         // [C] 파이썬에서 실제 이미지 데이터(Base64)를 한 번만 받아와서 양쪽에 동시에 뿌려줍니다.
@@ -599,6 +865,7 @@ async function startProcess(files) {
         
         checkResumeHistory(fileKey);
         setupScrollObserver();
+        setTimeout(updateMinimapViewportIndicator, 100);
 
     } catch (err) {
         console.error("처리 오류:", err);
@@ -643,10 +910,22 @@ async function processImagesInBatches(imageBlobs) {
         thumbItem.appendChild(thumbImg);
         if (navSidebar) navSidebar.appendChild(thumbItem);
 
-        thumbItem.onclick = () => {
+        thumbItem.onclick = (e) => {
             document.querySelectorAll('.nav-thumb-item').forEach(el => el.classList.remove('active'));
             thumbItem.classList.add('active');
-            img.scrollIntoView({ behavior: 'auto', block: 'start' });
+
+            // 클릭된 Y 좌표 비율 계산
+            const rect = thumbItem.getBoundingClientRect();
+            const clickY = e.clientY - rect.top;
+            const clickRatio = Math.max(0, Math.min(1, clickY / rect.height));
+
+            // 메인 뷰어 상의 해당 이미지 절대 위치 및 높이 계산
+            const imgRect = img.getBoundingClientRect();
+            const imgTop = imgRect.top + (window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0);
+            const imgHeight = imgRect.height;
+
+            const targetScrollY = imgTop + clickRatio * imgHeight - window.innerHeight / 2;
+            window.scrollTo({ top: targetScrollY, behavior: 'auto' });
         };
 
         processedCount++;
@@ -749,18 +1028,21 @@ document.getElementById('toggle-dark').onchange = (e) => {
 document.getElementById('toggle-spacing').onchange = (e) => {
     body.classList.toggle('spacing-collapsed', e.target.checked);
     window.pywebview.api.save_settings({ app: { spacingCollapsed: e.target.checked } });
+    setTimeout(updateMinimapViewportIndicator, 50);
 };
 document.getElementById('btn-fit').onclick = () => {
     body.classList.remove('view-mode-original');
     document.getElementById('btn-fit').classList.add('active');
     document.getElementById('btn-original').classList.remove('active');
     window.pywebview.api.save_settings({ app: { viewMode: 'fit' } });
+    setTimeout(updateMinimapViewportIndicator, 50);
 };
 document.getElementById('btn-original').onclick = () => {
     body.classList.add('view-mode-original');
     document.getElementById('btn-original').classList.add('active');
     document.getElementById('btn-fit').classList.remove('active');
     window.pywebview.api.save_settings({ app: { viewMode: 'original' } });
+    setTimeout(updateMinimapViewportIndicator, 50);
 };
 // ============================================================
 //  크기 조절 시 스크롤 위치 완벽 보존 (Time-Travel Math Anchor)
@@ -838,6 +1120,63 @@ function applyMathAnchor(anchor) {
     window.scrollTo({ top: targetAbsPos - currentViewportMid, behavior: 'instant' });
 }
 
+// 4. 애니메이션 도중 실시간 60fps 스크롤 위치 고정 엔진
+function calculateRealTimeAnchor() {
+    const pages = document.querySelectorAll('.webtoon-page');
+    if (pages.length === 0) return null;
+    
+    const viewportMid = window.innerHeight / 2;
+    for (let i = 0; i < pages.length; i++) {
+        const rect = pages[i].getBoundingClientRect();
+        if (rect.top <= viewportMid && rect.bottom >= viewportMid) {
+            return { index: i, ratio: (viewportMid - rect.top) / rect.height };
+        }
+    }
+    // Fallback: find the one closest to the middle
+    let closestIndex = 0;
+    let minDistance = Infinity;
+    for (let i = 0; i < pages.length; i++) {
+        const rect = pages[i].getBoundingClientRect();
+        const pageMid = rect.top + rect.height / 2;
+        const dist = Math.abs(pageMid - viewportMid);
+        if (dist < minDistance) {
+            minDistance = dist;
+            closestIndex = i;
+        }
+    }
+    const rect = pages[closestIndex].getBoundingClientRect();
+    const ratio = rect.height > 0 ? (viewportMid - rect.top) / rect.height : 0.5;
+    return { index: closestIndex, ratio: Math.max(0, Math.min(1, ratio)) };
+}
+
+function applyRealTimeAnchor(anchor) {
+    if (!anchor) return;
+    const pages = document.querySelectorAll('.webtoon-page');
+    const page = pages[anchor.index];
+    if (!page) return;
+    
+    const pageRect = page.getBoundingClientRect();
+    const deltaY = pageRect.top + (pageRect.height * anchor.ratio) - (window.innerHeight / 2);
+    if (Math.abs(deltaY) > 0.1) {
+        window.scrollBy(0, deltaY);
+    }
+}
+
+function animateScrollAnchor(anchor, duration = 300) {
+    const startTime = performance.now();
+    function step(now) {
+        const elapsed = now - startTime;
+        
+        applyRealTimeAnchor(anchor);
+        
+        if (elapsed < duration) {
+            requestAnimationFrame(step);
+        }
+    }
+    requestAnimationFrame(step);
+}
+
+
 // [1. 슬라이더 조절 시]
 document.getElementById('width-slider').oninput = (e) => {
     // 슬라이더는 드래그 중에도 최신 상태가 보존되므로 즉시 갱신
@@ -855,6 +1194,7 @@ document.getElementById('width-slider').oninput = (e) => {
     
     // 변경 직후 즉시(동기적으로) 수학적 위치 복원
     applyMathAnchor(anchor);
+    updateMinimapViewportIndicator();
 };
 
 // [2. 윈도우 창 크기 조절 시]
@@ -862,8 +1202,6 @@ let _resizeTimer = null;
 window.addEventListener('resize', () => {
     _isResizing = true;
     
-    // 리사이즈 이벤트 시점엔 이미 브라우저 레이아웃이 깨졌지만,
-    // 우리는 _lastScrollY 등에 '깨지기 전의 정보'를 가지고 있으므로 이를 바탕으로 복원
     const anchor = calculateAnchorFromPast();
     applyMathAnchor(anchor);
     
@@ -881,9 +1219,32 @@ window.addEventListener('resize', () => {
 // 미니맵 토글 이벤트
 document.getElementById('toggle-minimap').onchange = (e) => {
     const enabled = e.target.checked;
+    
+    // 토글 직전 현재 스크롤 앵커 계산
+    const anchor = calculateAnchorFromPast();
+    
+    // 레이아웃 변화가 즉시 일어나도록 트랜지션 임시 해제 클래스 추가
+    body.classList.add('no-transition');
+    
     isMinimapEnabled = enabled;
     window.pywebview.api.save_settings({ app: { minimapEnabled: enabled } });
     updateMinimapUI(enabled);
+    
+    // 브라우저 리플로우 강제 유도
+    body.offsetHeight;
+    
+    // 가로 너비 갱신 및 스크롤 위치 복원
+    _lastScrollY = window.scrollY;
+    _lastInnerHeight = window.innerHeight;
+    const container = document.getElementById('viewer-container');
+    if (container) _lastContainerWidth = container.clientWidth;
+    
+    applyMathAnchor(anchor);
+    
+    // 트랜지션 클래스 제거
+    setTimeout(() => {
+        body.classList.remove('no-transition');
+    }, 50);
 };
 
 // 캡처 포맷 변경 이벤트
@@ -931,6 +1292,13 @@ window.addEventListener('click', () => {
 // 단축키 로직 수정 (기존 window.onkeydown을 찾아서 내용을 추가하세요)
 const originalOnKeyDown = window.onkeydown;
 window.onkeydown = (e) => {
+    // [추가] 영역 지정 캡처 중 ESC 누르면 취소
+    if (e.key === 'Escape' && typeof isSelecting !== 'undefined' && isSelecting) {
+        endCropCapture(null);
+        return;
+    }
+
+
     // 포커스가 input이나 textarea에 있을 때는 단축키를 무시합니다.
     const activeEl = document.activeElement;
     if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.isContentEditable)) {
@@ -942,6 +1310,8 @@ window.onkeydown = (e) => {
     if (originalOnKeyDown) originalOnKeyDown(e);
 
     const key = e.key.toLowerCase();
+
+
 
     // [추가] M 키를 누르면 미니맵 토글
     if (key === 'm') {
@@ -1211,14 +1581,27 @@ const selectionBox = document.createElement('div');
 selectionBox.id = 'selection-box';
 document.body.appendChild(selectionBox);
 
-document.getElementById('btn-crop-capture').onclick = () => {
+document.getElementById('btn-crop-capture').onclick = async () => {
+    // 진입 전 앵커를 구하여 이미지 축소 후 스크롤을 유지하도록 설정
+    const anchor = calculateRealTimeAnchor();
+
+    // 트랜지션 효과 적용 클래스 추가
+    document.body.classList.add('selecting-transition');
     isSelecting = true;
     // 마우스 커서가 십자 모양(+)으로 바뀌도록 클래스 추가
     document.body.classList.add('selecting');
     // 설정 패널 닫기 (캡처 방해 방지)
     settingsPanel.classList.remove('show');
     
-    // [수정] alert() 줄을 삭제하여 확인 창 없이 바로 캡처 모드로 진입합니다.
+    // 가이드 안내 토스트 팝업 띄우기
+    showToast("마우스로 드래그하여 영역을 선택하세요. (ESC: 취소)", "camera");
+
+    // 애니메이션 프레임마다 스크롤을 앵커에 정교하게 동기화
+    animateScrollAnchor(anchor, 150);
+
+    setTimeout(() => {
+        document.body.classList.remove('selecting-transition');
+    }, 150);
 };
 
 window.addEventListener('mousedown', (e) => {
@@ -1266,16 +1649,59 @@ window.addEventListener('mousemove', (e) => {
 
 window.addEventListener('mouseup', async (e) => {
     if (!isSelecting) return;
+    const rect = selectionBox.getBoundingClientRect();
+    await endCropCapture(rect);
+});
+
+// 영역 지정 캡처 종료/취소 처리 공통 함수
+async function endCropCapture(rect) {
+    if (!isSelecting) return;
+    
+    // 원래 레이아웃으로 돌아가기 전 앵커를 최신화
+    const anchor = calculateRealTimeAnchor();
+
+    // 트랜지션 효과 적용 클래스 추가
+    document.body.classList.add('selecting-transition');
     isSelecting = false;
     document.body.classList.remove('selecting');
-    
-    const rect = selectionBox.getBoundingClientRect();
     selectionBox.style.display = 'none';
 
-    if (rect.width < 5 || rect.height < 5) return; 
-    
-    await captureHighRes(rect, "Crop");
-});
+    // 미니맵 마우스 튐 방지
+    const sidebar = document.getElementById('nav-sidebar');
+    const trigger = document.getElementById('nav-trigger');
+    if (sidebar && trigger) {
+        sidebar.style.setProperty('pointer-events', 'none', 'important');
+        trigger.style.setProperty('pointer-events', 'none', 'important');
+        
+        const restorePointerEvents = () => {
+            if (sidebar) sidebar.style.removeProperty('pointer-events');
+            if (trigger) trigger.style.removeProperty('pointer-events');
+            window.removeEventListener('mousemove', onMouseMove);
+        };
+        
+        const onMouseMove = (e) => {
+            if (e.clientX < window.innerWidth - 120) {
+                restorePointerEvents();
+            }
+        };
+        
+        window.addEventListener('mousemove', onMouseMove);
+        setTimeout(restorePointerEvents, 1500);
+    }
+
+    // 애니메이션 프레임마다 스크롤을 앵커에 정교하게 동기화
+    animateScrollAnchor(anchor, 150);
+
+    setTimeout(() => {
+        document.body.classList.remove('selecting-transition');
+    }, 150);
+
+    if (rect && rect.width >= 5 && rect.height >= 5) {
+        await captureHighRes(rect, "Crop");
+    } else {
+        showToast("캡처가 취소되었습니다.", "x");
+    }
+}
 
 /**
  * [핵심] 고화질 원본 해상도 캡처 공통 함수
@@ -1392,7 +1818,9 @@ window.addEventListener('keydown', (e) => {
 
 async function tLog(msg) {
     console.log(msg);
-    // 더이상 파이썬 터미널에 로그를 남기지 않습니다.
+    if (window.pywebview && window.pywebview.api && window.pywebview.api.debug_log) {
+        window.pywebview.api.debug_log(msg);
+    }
 }
 
 

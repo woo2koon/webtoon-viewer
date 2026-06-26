@@ -102,8 +102,17 @@ class ViewerAPI:
         return source
 
     def debug_log(self, msg):
-        # print(f"[JS DEBUG] {msg}")
+        import sys
+        try:
+            print(f"[JS DEBUG] {msg}")
+        except UnicodeEncodeError:
+            encoding = sys.stdout.encoding or 'utf-8'
+            safe_msg = msg.encode(encoding, errors='replace').decode(encoding, errors='replace')
+            print(f"[JS DEBUG] {safe_msg}")
+        sys.stdout.flush()
         return True
+
+
 
 settings_lock = threading.Lock()
 
