@@ -800,7 +800,7 @@ async function processPythonFiles(fileObjects, folderPath) {
             const imgHeight = imgRect.height;
 
             const targetScrollY = imgTop + clickRatio * imgHeight - window.innerHeight / 2;
-            window.scrollTo({ top: targetScrollY, behavior: 'auto' });
+            window.scrollTo({ top: targetScrollY, behavior: 'smooth' });
         };
 
         // [C] 파이썬에서 실제 이미지 데이터(Base64)를 한 번만 받아와서 양쪽에 동시에 뿌려줍니다.
@@ -954,7 +954,7 @@ async function processImagesInBatches(imageBlobs) {
             const imgHeight = imgRect.height;
 
             const targetScrollY = imgTop + clickRatio * imgHeight - window.innerHeight / 2;
-            window.scrollTo({ top: targetScrollY, behavior: 'auto' });
+            window.scrollTo({ top: targetScrollY, behavior: 'smooth' });
         };
 
         processedCount++;
