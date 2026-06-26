@@ -571,9 +571,19 @@ function updateMinimapViewportIndicator() {
     }
 }
 
+let _minimapUpdatePending = false;
+function queueMinimapUpdate() {
+    if (_minimapUpdatePending) return;
+    _minimapUpdatePending = true;
+    requestAnimationFrame(() => {
+        updateMinimapViewportIndicator();
+        _minimapUpdatePending = false;
+    });
+}
+
 // 스크롤 및 창 크기 조절 시 미니맵 뷰포트 표시 영역 실시간 업데이트
-window.addEventListener('scroll', updateMinimapViewportIndicator, { passive: true });
-window.addEventListener('resize', updateMinimapViewportIndicator, { passive: true });
+window.addEventListener('scroll', queueMinimapUpdate, { passive: true });
+window.addEventListener('resize', queueMinimapUpdate, { passive: true });
 
 async function loadSettings() {
     if (!window.pywebview || !window.pywebview.api) {
