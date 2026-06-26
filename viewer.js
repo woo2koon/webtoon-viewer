@@ -554,6 +554,16 @@ function updateMinimapViewportIndicator() {
             overlay.style.display = 'none';
         }
     }
+
+    // 3. 미니맵 자동 스크롤 (마우스가 미니맵 위에 없을 때만 작동)
+    if (!sidebar.matches(':hover')) {
+        const anchor = typeof calculateRealTimeAnchor === 'function' ? calculateRealTimeAnchor() : null;
+        if (anchor && thumbs[anchor.index]) {
+            const targetThumb = thumbs[anchor.index];
+            const sidebarTargetY = targetThumb.offsetTop + (targetThumb.offsetHeight * anchor.ratio);
+            sidebar.scrollTop = sidebarTargetY - (sidebar.clientHeight / 2);
+        }
+    }
 }
 
 // 스크롤 및 창 크기 조절 시 미니맵 뷰포트 표시 영역 실시간 업데이트
