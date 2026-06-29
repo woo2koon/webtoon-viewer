@@ -814,6 +814,14 @@ async function processPythonFiles(fileObjects, folderPath) {
     pageIndicator.style.display = 'block';
     updatePageIndicator(1);
     
+    if (window.pywebview && window.pywebview.api) {
+        const settings = await window.pywebview.api.get_settings();
+        if (settings && settings.app) {
+            isMinimapEnabled = settings.app.minimapEnabled !== false;
+            isMinimapPinned = settings.app.minimapPinned === true;
+        }
+    }
+    
     if (typeof updateMinimapUI === 'function') updateMinimapUI(isMinimapEnabled);
     setupScrollObserver();
 
@@ -869,6 +877,7 @@ async function startProcess(files) {
 
         const settings = await window.pywebview.api.get_settings();
         isMinimapEnabled = settings.app ? settings.app.minimapEnabled !== false : true;
+        isMinimapPinned = settings.app ? settings.app.minimapPinned === true : false;
         updateMinimapUI(isMinimapEnabled);
         pageIndicator.style.display = 'block';
         updatePageIndicator(1);
@@ -1021,7 +1030,6 @@ const observer = new IntersectionObserver((entries) => {
             const thumb = document.getElementById(`thumb-${idx}`);
             if (thumb) {
                 thumb.classList.add('active');
-                thumb.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
             }
             updatePageIndicator(idx + 1);
         }
