@@ -2,7 +2,7 @@
 ; SEE THE DOCUMENTATION FOR DETAILS ON CREATING INNO SETUP SCRIPT FILES!
 
 #define MyAppName "Webtoon Viewer Pro"
-#define MyAppVersion "2.1"
+#define MyAppVersion "3.0"
 #define MyAppPublisher "PAK JINWOO"
 #define MyAppExeName "WebtoonViewerPro.exe"
 

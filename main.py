@@ -12,7 +12,7 @@ import subprocess
 
 
 
-APP_VERSION = "2.1"
+APP_VERSION = "3.0"
 
 # PyInstaller 빌드 시 리소스 경로 처리를 위한 함수
 def get_resource_path(relative_path):
