@@ -1,3 +1,7 @@
+if (navigator.userAgent.indexOf('Mac') === -1) {
+    document.title = 'Webtoon Viewer Pro';
+}
+
 // ============================================================
 //  0. [디자인 & 렌더링 패치] 스타일 강제 주입
 // ============================================================
@@ -119,7 +123,127 @@ stylePatch.innerHTML = `
     }
     .nav-thumb-item.active .thumb-label { background: #007aff !important; color: #fff !important; }
 
-    /* 2. [핵심 수정] 메인 뷰어 컨테이너 */
+    /* 1.5. [추가] 이미지 로딩 스켈레톤 및 페이드인 스타일 */
+    .image-wrapper {
+        position: relative !important;
+        width: 100% !important;
+        min-height: 800px !important;
+        background-color: #151515 !important;
+        overflow: hidden !important;
+        box-sizing: border-box !important;
+        display: flex !important;
+        justify-content: center !important;
+        align-items: center !important;
+    }
+    
+    .image-wrapper.skeleton::after {
+        content: "" !important;
+        position: absolute !important;
+        top: 0 !important; left: 0 !important;
+        width: 100% !important; height: 100% !important;
+        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.05), transparent) !important;
+        transform: translateX(-100%) !important;
+        animation: shimmer 1.5s infinite !important;
+    }
+    
+    @keyframes shimmer {
+        100% { transform: translateX(100%) !important; }
+    }
+    
+    .image-wrapper img {
+        opacity: 0 !important;
+        transition: opacity 0.3s ease-in-out !important;
+        display: block !important;
+        width: 100% !important;
+        height: auto !important;
+    }
+    
+    .image-wrapper.loaded img {
+        opacity: 1 !important;
+    }
+    
+    .image-wrapper.loaded {
+        min-height: auto !important;
+        background-color: transparent !important;
+    }
+
+    /* 2. [핵심 수정] 메인 뷰어 컨테이너 및 비교모드 스플릿 */
+    #split-wrapper {
+        display: block;
+        width: 100%;
+    }
+    body.compare-mode {
+        overflow: hidden !important;
+    }
+    body.compare-mode #split-wrapper {
+        display: flex !important;
+        flex-direction: row !important;
+        width: 100vw !important;
+        height: 100vh !important;
+        overflow: hidden !important;
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        z-index: 10 !important;
+    }
+    body.compare-mode.minimap-pinned #split-wrapper {
+        width: calc(100vw - 100px) !important;
+    }
+    body.compare-mode #viewer-container,
+    body.compare-mode #viewer-container-right {
+        flex: 1 !important;
+        height: 100% !important;
+        overflow-y: scroll !important;
+        overflow-x: auto !important;
+        position: relative !important;
+        background-color: #000 !important;
+        box-sizing: border-box !important;
+        min-height: 100vh !important;
+        max-width: none !important; /* 비교모드 시 50% 분할 공간을 꽉 채우도록 제한 해제 */
+    }
+    body.compare-mode #viewer-container {
+        border-right: 2px solid #333 !important;
+    }
+    
+    body.compare-mode.view-mode-fit #viewer-container,
+    body.compare-mode.view-mode-fit #viewer-container-right {
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: center !important;
+    }
+    body.compare-mode.view-mode-fit #viewer-container .webtoon-page,
+    body.compare-mode.view-mode-fit #viewer-container-right .webtoon-page {
+        width: 100% !important;
+        max-width: var(--container-width) !important;
+    }
+    body.compare-mode.view-mode-fit .viewer-image {
+        width: 100% !important;
+        height: auto !important;
+    }
+    
+    body.compare-mode.view-mode-original #viewer-container .webtoon-page,
+    body.compare-mode.view-mode-original #viewer-container-right .webtoon-page {
+        width: fit-content !important;
+        max-width: none !important;
+    }
+    body.compare-mode.view-mode-original .viewer-image {
+        width: auto !important;
+        max-width: none !important;
+        height: auto !important;
+    }
+
+    .message-box-compare {
+        position: absolute !important;
+        top: 50% !important;
+        left: 50% !important;
+        transform: translate(-50%, -50%) !important;
+        text-align: center !important;
+        color: #888 !important;
+        width: calc(100% - 40px) !important;
+        max-width: 300px !important;
+        box-sizing: border-box !important;
+    }
+
     #viewer-container {
         font-size: 0 !important;
         line-height: 0 !important;
@@ -141,6 +265,14 @@ stylePatch.innerHTML = `
     /* 안내 메시지 스타일 (유지) */
     #message-box {
         font-size: 16px !important; line-height: 1.5 !important; color: #888 !important;
+        position: absolute !important;
+        top: 50% !important;
+        left: 50% !important;
+        transform: translate(-50%, -50%) !important;
+        width: calc(100% - 40px) !important;
+        max-width: 340px !important;
+        box-sizing: border-box !important;
+        text-align: center !important;
     }
 
     /* 3. 이미지 조각 스타일 (모드별 대응) */
@@ -152,27 +284,29 @@ stylePatch.innerHTML = `
         margin-bottom: -1px !important;
         transform: none !important;
         image-rendering: auto; 
-        background: transparent !important; 
+        background: transparent !important;
+        width: 100% !important;
+        max-width: 100% !important;
     }
 
     /* [가로 맞춤] 창 너비나 슬라이더에 맞춤 */
-    body.view-mode-fit #viewer-container {
+    body:not(.compare-mode).view-mode-fit #viewer-container {
         width: 100% !important;
         max-width: var(--container-width) !important;
     }
-    body.view-mode-fit .viewer-image {
+    body:not(.compare-mode).view-mode-fit .viewer-image {
         width: 100% !important;
         height: auto !important;
     }
 
     /* [원본 크기] 이미지 실제 픽셀 크기 고정 */
-    body.view-mode-original #viewer-container {
+    body:not(.compare-mode).view-mode-original #viewer-container {
         width: fit-content !important;
         max-width: none !important;
         min-width: 100% !important;
         align-items: center !important;
     }
-    body.view-mode-original .viewer-image {
+    body:not(.compare-mode).view-mode-original .viewer-image {
         width: auto !important;
         max-width: none !important;
         height: auto !important;
@@ -185,6 +319,7 @@ stylePatch.innerHTML = `
         margin: 0 !important;
         padding: 0 !important;
         background: transparent !important;
+        flex-shrink: 0 !important; /* 비교모드 Flex 컨테이너 내 찌부러짐 방지 */
     }
     
     /* 원본 크기 모드에서 페이지 박스 크기 제한 해제 */
@@ -304,7 +439,7 @@ stylePatch.innerHTML = `
     body.selecting:not(.minimap-pinned) {
         padding-right: 0 !important;
     }
-    body.selecting, body.selecting * {
+    body.selecting, body.selecting *:not(.viewer-image):not(.image-wrapper) {
         transition: none !important;
     }
     body.selecting #nav-trigger {
@@ -317,14 +452,107 @@ stylePatch.innerHTML = `
     body.selecting.minimap-pinned #nav-sidebar {
         pointer-events: none !important; /* 캡처 드래그 중 오동작 방지 */
     }
-    body.selecting #viewer-container {
+    /* 영역 지정 캡처 시 각 뷰어 안의 이미지 크기 축소로 여백 확보 및 스크롤바 위치 고정 (ID 선택자로 우선순위 보장) */
+    body.selecting.view-mode-fit #viewer-container .viewer-image,
+    body.selecting.view-mode-fit #viewer-container-right .viewer-image,
+    body.selecting.view-mode-original #viewer-container .viewer-image,
+    body.selecting.view-mode-original #viewer-container-right .viewer-image,
+    body.selecting.compare-mode.view-mode-fit #viewer-container .viewer-image,
+    body.selecting.compare-mode.view-mode-fit #viewer-container-right .viewer-image,
+    body.selecting.compare-mode.view-mode-original #viewer-container .viewer-image,
+    body.selecting.compare-mode.view-mode-original #viewer-container-right .viewer-image {
         max-width: calc(var(--container-width) - 60px) !important;
         width: calc(100% - 60px) !important;
     }
-    /* 캡처 진입/탈출 시 컨테이너 너비만 부드럽게 애니메이션 */
-    body.selecting #viewer-container,
-    body.selecting-transition #viewer-container {
-        transition: width 0.15s ease-in-out, max-width 0.15s ease-in-out !important;
+    body.selecting .viewer-image,
+    body.selecting-transition .viewer-image,
+    body.selecting .image-wrapper,
+    body.selecting-transition .image-wrapper {
+        transition: width 0.15s ease-in-out, max-width 0.15s ease-in-out, min-height 0.15s ease-in-out, height 0.15s ease-in-out !important;
+    }
+
+    /* 커스텀 컨텍스트 메뉴 스타일 */
+    .custom-context-menu {
+        position: fixed !important;
+        background: rgba(30, 30, 30, 0.95) !important;
+        backdrop-filter: blur(12px) !important;
+        -webkit-backdrop-filter: blur(12px) !important;
+        border: 1px solid rgba(255, 255, 255, 0.08) !important;
+        border-radius: 8px !important;
+        padding: 6px 0 !important;
+        width: 190px !important;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.5) !important;
+        z-index: 99999 !important;
+        color: #ddd !important;
+        font-family: 'Pretendard', sans-serif !important;
+        font-size: 13px !important;
+        user-select: none !important;
+    }
+    .context-item {
+        display: flex !important;
+        align-items: center !important;
+        padding: 8px 12px !important;
+        cursor: pointer !important;
+        transition: background 0.15s, color 0.15s !important;
+    }
+    .context-item:hover {
+        background: #007aff !important;
+        color: #fff !important;
+    }
+    .context-item.disabled {
+        opacity: 0.3 !important;
+        cursor: not-allowed !important;
+        pointer-events: none !important;
+    }
+    .context-item .icon {
+        width: 16px !important;
+        height: 16px !important;
+        margin-right: 8px !important;
+        fill: currentColor !important;
+    }
+    .context-item .ctx-shortcut {
+        margin-left: auto !important;
+        font-size: 11px !important;
+        color: #888;
+    }
+    .context-item:hover .ctx-shortcut {
+        color: rgba(255, 255, 255, 0.8) !important;
+    }
+    .context-divider {
+        height: 1px !important;
+        background: rgba(255, 255, 255, 0.08) !important;
+        margin: 4px 0 !important;
+    }
+
+    /* 서브메뉴 스타일 */
+    .context-item.has-submenu {
+        position: relative !important;
+    }
+    .context-submenu {
+        position: absolute !important;
+        top: -6px !important;
+        left: 98% !important;
+        background: rgba(30, 30, 30, 0.95) !important;
+        backdrop-filter: blur(12px) !important;
+        -webkit-backdrop-filter: blur(12px) !important;
+        border: 1px solid rgba(255, 255, 255, 0.08) !important;
+        border-radius: 8px !important;
+        padding: 6px 0 !important;
+        width: 140px !important;
+        box-shadow: 0 10px 25px rgba(0,0,0,0.5) !important;
+        display: none !important;
+        z-index: 100000 !important;
+    }
+    .context-item.has-submenu:hover .context-submenu {
+        display: block !important;
+    }
+    .context-item .ctx-arrow {
+        margin-left: auto !important;
+        font-size: 9px !important;
+        color: #666 !important;
+    }
+    .context-item:hover .ctx-arrow {
+        color: #fff !important;
     }
 
 
@@ -350,10 +578,75 @@ const ICON_MAP = {
 
 let isMinimapEnabled = true; // 여기에 한 번만 선언합니다.
 let isMinimapPinned = false; // 미니맵 고정(Lock) 여부
+
+// [추가] 순차적 백그라운드 사전 로드(Queue Preloader)를 위한 전역 제어 변수 및 헬퍼 함수
+const preloadQueue = []; // { index, file, wrapper, img, thumbImg } 로딩 대기 큐
+let activeLoads = 0;
+const MAX_CONCURRENT_LOADS = 2; // 동시 백그라운드 이미지 로드 수 제한 (파이썬 멈춤 방지)
+
+function triggerBackgroundLoad() {
+    if (activeLoads >= MAX_CONCURRENT_LOADS || preloadQueue.length === 0) return;
+    
+    const item = preloadQueue.shift();
+    if (!item) return;
+    
+    // 이미 로드가 시작되었거나 완료된 경우는 스킵하고 다음 항목 탐색
+    if (item.wrapper.dataset.loadState !== 'pending') {
+        triggerBackgroundLoad();
+        return;
+    }
+    
+    loadSingleImage(item, () => {
+        triggerBackgroundLoad(); // 완료 후 순차적으로 다음 항목 트리거
+    });
+    
+    triggerBackgroundLoad(); // 남은 병렬 슬롯이 있다면 추가 실행
+}
+
+function loadSingleImage(item, callback) {
+    const { wrapper, img, thumbImg, file } = item;
+    
+    wrapper.dataset.loadState = 'loading';
+    activeLoads++;
+    
+    if (window.pywebview && window.pywebview.api) {
+        window.pywebview.api.get_image_data(file.rawPath).then(dataUrl => {
+            if (dataUrl) {
+                img.onload = () => {
+                    if (img.naturalWidth > 0) {
+                        img.dataset.ratio = img.naturalHeight / img.naturalWidth;
+                    }
+                    wrapper.classList.remove('skeleton');
+                    wrapper.classList.add('loaded');
+                    wrapper.dataset.loadState = 'loaded';
+                };
+                img.src = dataUrl;
+                if (thumbImg) thumbImg.src = dataUrl;
+            } else {
+                wrapper.classList.remove('skeleton');
+                wrapper.dataset.loadState = 'failed';
+            }
+            activeLoads--;
+            if (callback) callback();
+        }).catch(err => {
+            console.error("이미지 로드 오류:", err);
+            wrapper.classList.remove('skeleton');
+            wrapper.dataset.loadState = 'failed';
+            activeLoads--;
+            if (callback) callback();
+        });
+    } else {
+        activeLoads--;
+        if (callback) callback();
+    }
+}
 let createdUrls = [];
+let rightCreatedUrls = []; // 우측 화면 해제용 URL들
 let currentFileKey = "";
+let rightCurrentFileKey = "";
 let scrollSaveTimer = null;
 let currentCaptureFormat = "png";
+let isResumeEnabled = true; // 이어서 보기 활성화 상태 변수 (기본값 true)
 
 let scrollVelocityY = 0; // 수직 속도
 let scrollVelocityX = 0; // 수평 속도
@@ -361,9 +654,14 @@ let isAccelEnabled = false;
 let isStepScrollEnabled = true;
 let stepAmount = 100;
 
+// 비교보기 모드 변수
+let isCompareMode = false;
+let isScrollSync = true;
+
 const hiddenInput = document.getElementById('hidden-file-input');
 const hiddenFolderInput = document.getElementById('hidden-folder-input');
 const container = document.getElementById('viewer-container');
+const containerRight = document.getElementById('viewer-container-right');
 const menuBtn = document.getElementById('menu-btn');
 const settingsPanel = document.getElementById('settings-panel');
 const body = document.body;
@@ -377,11 +675,18 @@ const menuFolderBtn = document.getElementById('menu-folder-btn');
 const centerFileBtn = document.getElementById('center-file-btn');
 const centerFolderBtn = document.getElementById('center-folder-btn');
 
+const rightFileBtn = document.getElementById('right-file-btn');
+const rightFolderBtn = document.getElementById('right-folder-btn');
+const toggleCompare = document.getElementById('toggle-compare');
+const toggleScrollSync = document.getElementById('toggle-scroll-sync');
+const scrollSyncRow = document.getElementById('scroll-sync-row');
+
 const resumeModal = document.getElementById('resume-modal');
 const btnResumeYes = document.getElementById('btn-resume-yes');
 const btnResumeNo = document.getElementById('btn-resume-no');
 
 let totalFiles = 0;
+let rightTotalFiles = 0;
 
 const friction = 0.80;    
 const accelFactor = 0.7;
@@ -493,7 +798,7 @@ function updateMinimapViewportIndicator() {
     const sidebar = document.getElementById('nav-sidebar');
     if (!sidebar) return;
 
-    const pages = Array.from(document.querySelectorAll('.webtoon-page'));
+    const pages = Array.from(document.getElementById('viewer-container').querySelectorAll('.webtoon-page'));
     const thumbs = Array.from(sidebar.querySelectorAll('.nav-thumb-item'));
 
     // 미니맵 비활성화 혹은 이미지가 없는 경우 모든 개별 오버레이 제거/숨김
@@ -580,6 +885,11 @@ async function loadSettings() {
     const app = settings.app || {};
     tLog(`⚙️ 로드된 설정: ${JSON.stringify(app)}`);
 
+    // 0. 이어서 보기 활성화
+    isResumeEnabled = app.resumeEnabled !== false;
+    const resumeToggle = document.getElementById('toggle-resume');
+    if (resumeToggle) resumeToggle.checked = isResumeEnabled;
+
     // 1. 다크 모드
     const isDark = app.darkMode === true;
     body.classList.toggle('dark-mode', isDark);
@@ -649,6 +959,14 @@ async function loadSettings() {
     // 9. 캡처 저장 포맷
     currentCaptureFormat = app.captureFormat || "png";
     updateCustomDropdownUI(currentCaptureFormat);
+
+    // 10. 캡처 저장 경로
+    const captureDir = app.captureDir || "";
+    const captureDirValue = document.getElementById('capture-dir-value');
+    if (captureDirValue) {
+        captureDirValue.textContent = captureDir || "기본 (사진/Webtoon capture)";
+        captureDirValue.title = captureDir || "기본 사진 저장 폴더";
+    }
 }
 
 
@@ -680,168 +998,280 @@ function restoreSliderLabels() {
 //  [통합] 파일/폴더 열기 및 윈도우 보안 우회 경로 처리
 // ============================================================
 
-// 1. 모든 열기 버튼 연결 (메뉴 & 중앙 버튼)
-const btnConfigs = [
-    { id: 'menu-folder-btn', type: 'folder' },
-    { id: 'center-folder-btn', type: 'folder' },
-    { id: 'menu-file-btn', type: 'file' },
-    { id: 'center-file-btn', type: 'file' }
-];
-
-btnConfigs.forEach(config => {
-    const btn = document.getElementById(config.id);
+// 1. 버튼 바인딩 헬퍼 함수
+function bindButton(id, type, side) {
+    const btn = document.getElementById(id);
     if (btn) {
         btn.onclick = async (e) => {
-            tLog(`🔘 버튼 클릭됨: ${config.id}`);
+            tLog(`🔘 버튼 클릭됨: ${id} (영역: ${side})`);
             e.preventDefault();
             e.stopImmediatePropagation();
             if (window.pywebview && window.pywebview.api) {
-                const result = (config.type === 'folder') 
+                const result = (type === 'folder') 
                     ? await window.pywebview.api.open_folder_dialog() 
                     : await window.pywebview.api.open_file_dialog();
                 if (result) {
                     tLog(`📂 경로 선택 완료: ${result.folderPath}`);
-                    finalizePathAndRender(result);
+                    finalizePathAndRender(result, side);
                 }
             } else {
                 tLog("⚠️ pywebview API를 찾을 수 없습니다.");
             }
         };
     }
+}
+
+// 2. 모든 열기 버튼 연결 (메뉴 & 중앙 버튼, 그리고 우측 분할창 버튼)
+const btnConfigs = [
+    { id: 'menu-folder-btn', type: 'folder', side: 'left' },
+    { id: 'center-folder-btn', type: 'folder', side: 'left' },
+    { id: 'menu-file-btn', type: 'file', side: 'left' },
+    { id: 'center-file-btn', type: 'file', side: 'left' },
+    { id: 'right-folder-btn', type: 'folder', side: 'right' },
+    { id: 'right-file-btn', type: 'file', side: 'right' }
+];
+
+btnConfigs.forEach(config => {
+    bindButton(config.id, config.type, config.side);
 });
 
-// 2. 파이썬에 전달할 순수 경로만 정리하는 함수
-function finalizePathAndRender(result) {
+// 우측 비교보기 영역 초기 상태로 리셋하는 함수
+function resetRightPane() {
+    rightCurrentFileKey = "";
+    rightTotalFiles = 0;
+    if (containerRight) {
+        containerRight.classList.remove('has-images-right');
+        containerRight.innerHTML = `
+            <div id="message-box-right" class="message-box-compare">
+                <div style="display:flex; flex-direction:column; gap:12px; align-items:center;">
+                    <h3 style="color:#eee; margin-bottom:10px;">비교 대상 웹툰 로드</h3>
+                    <button id="right-file-btn" class="action-btn btn-primary" style="width:200px; padding: 10px 16px;">
+                        <svg class="icon" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                        <span>파일 열기 (오른쪽)</span>
+                    </button>
+                    <button id="right-folder-btn" class="action-btn btn-secondary" style="width:200px; padding: 10px 16px;">
+                        <svg class="icon" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                        <span>폴더 열기 (오른쪽)</span>
+                    </button>
+                </div>
+            </div>
+        `;
+        bindButton('right-folder-btn', 'folder', 'right');
+        bindButton('right-file-btn', 'file', 'right');
+    }
+    rightCreatedUrls.forEach(url => URL.revokeObjectURL(url));
+    rightCreatedUrls = [];
+}
+
+// 3. 파이썬에 전달할 순수 경로만 정리하는 함수
+function finalizePathAndRender(result, side = 'left') {
     const { folderPath, files } = result;
 
     const fileObjects = files.map(fileName => {
-        // 복잡한 인코딩이나 URL 주소 없이, 하드디스크의 순수 경로만 묶어줍니다.
         const fullPath = `${folderPath}/${fileName}`;
         return { name: fileName, rawPath: fullPath };
     });
 
-    processPythonFiles(fileObjects, folderPath);
+    processPythonFiles(fileObjects, folderPath, side);
     if (settingsPanel) settingsPanel.classList.remove('show');
 }
 
 // 3. 브라우저 네트워크를 거치지 않고 메인 이미지와 썸네일을 동시 생성하는 최종 함수
-async function processPythonFiles(fileObjects, folderPath) {
-    const vContainer = document.getElementById('viewer-container');
+async function processPythonFiles(fileObjects, folderPath, side = 'left') {
+    const isRight = side === 'right';
+    const vContainer = isRight ? containerRight : container;
     const navSidebar = document.getElementById('nav-sidebar'); // 썸네일 컨테이너
-    const loadingOverlay = document.getElementById('loading-overlay');
-    const loadingText = document.getElementById('loading-text');
-    const loadingBar = document.getElementById('progress-bar');
 
     if (!vContainer) return;
 
+    // 새로운 파일 로드 시 기존 찌꺼기 스크롤 강제 초기화
+    if (isRight) {
+        if (containerRight) containerRight.scrollTop = 0;
+    } else {
+        if (isCompareMode) {
+            if (container) container.scrollTop = 0;
+        } else {
+            window.scrollTo(0, 0);
+        }
+    }
+
     // 메인 화면과 미니맵 초기화
     vContainer.innerHTML = ''; 
-    if (navSidebar) navSidebar.innerHTML = ''; 
-    currentFileKey = folderPath; 
-    totalFiles = fileObjects.length;
-
-    // 로딩 처리 제거됨
-
+    if (!isRight) {
+        if (navSidebar) navSidebar.innerHTML = ''; 
+        currentFileKey = folderPath; 
+        totalFiles = fileObjects.length;
+        resetRightPane(); // 새로운 원본 로드 시 우측 분할 화면도 초기 상태로 리셋
+    } else {
+        rightCurrentFileKey = folderPath;
+        rightTotalFiles = fileObjects.length;
+    }
 
     let processedCount = 0;
+    const countTarget = isRight ? rightTotalFiles : totalFiles;
+
+    // 상단 프로그레스 바 상태 초기화
+    const loaderBar = document.getElementById('top-loading-bar');
+    if (loaderBar) {
+        loaderBar.style.opacity = '1';
+        loaderBar.style.width = '0%';
+    }
+    let loadedCount = 0;
 
     for (const [index, file] of fileObjects.entries()) {
-        // [A] 메인 뷰어 이미지 틀 생성
+        // [A] 메인 뷰어 이미지 및 스켈레톤 틀 생성
+        const wrapper = document.createElement('div');
+        wrapper.className = 'image-wrapper skeleton webtoon-page';
+        wrapper.id = `${side}-file-start-${index}`; // 썸네일 클릭 시 이동할 타겟 위치
+        wrapper.dataset.fileIndex = index;
+        wrapper.dataset.rawPath = file.rawPath;
+        if (!isRight) wrapper.dataset.thumbId = `thumb-img-${index}`;
+
         const img = document.createElement('img');
-        img.className = 'viewer-image webtoon-page'; 
-        img.id = `file-start-${index}`; // 썸네일 클릭 시 이동할 타겟 위치
-        img.dataset.fileIndex = index;
+        img.className = 'viewer-image'; 
         img.draggable = false;
-        vContainer.appendChild(img);
-
-        // [B] 사이드바 썸네일 틀 생성
-        const thumbItem = document.createElement('div');
-        thumbItem.className = 'nav-thumb-item';
-        thumbItem.id = `thumb-${index}`;
-        thumbItem.dataset.idx = index;
         
-        const label = document.createElement('div');
-        label.className = 'thumb-label';
-        label.textContent = index + 1;
-        thumbItem.appendChild(label);
-        
-        const thumbImg = document.createElement('img');
-        thumbItem.appendChild(thumbImg);
-        if (navSidebar) navSidebar.appendChild(thumbItem);
+        wrapper.appendChild(img);
+        vContainer.appendChild(wrapper);
 
-        // 썸네일 클릭 시 해당 이미지로 스크롤 이동
-        thumbItem.onclick = (e) => {
-            document.querySelectorAll('.nav-thumb-item').forEach(el => el.classList.remove('active'));
-            thumbItem.classList.add('active');
+        let thumbImg = null;
+        // [B] 사이드바 썸네일 틀 생성 (좌측 화면만 썸네일 생성)
+        if (!isRight && navSidebar) {
+            const thumbItem = document.createElement('div');
+            thumbItem.className = 'nav-thumb-item';
+            thumbItem.id = `thumb-${index}`;
+            thumbItem.dataset.idx = index;
+            
+            const label = document.createElement('div');
+            label.className = 'thumb-label';
+            label.textContent = index + 1;
+            thumbItem.appendChild(label);
+            
+            thumbImg = document.createElement('img');
+            thumbImg.id = `thumb-img-${index}`;
+            thumbItem.appendChild(thumbImg);
+            navSidebar.appendChild(thumbItem);
 
-            // 클릭된 Y 좌표 비율 계산
-            const rect = thumbItem.getBoundingClientRect();
-            const clickY = e.clientY - rect.top;
-            const clickRatio = Math.max(0, Math.min(1, clickY / rect.height));
+            // 썸네일 클릭 시 해당 이미지로 스크롤 이동
+            thumbItem.onclick = (e) => {
+                document.querySelectorAll('.nav-thumb-item').forEach(el => el.classList.remove('active'));
+                thumbItem.classList.add('active');
 
-            // 메인 뷰어 상의 해당 이미지 절대 위치 및 높이 계산
-            const imgRect = img.getBoundingClientRect();
-            const imgTop = imgRect.top + (window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0);
-            const imgHeight = imgRect.height;
+                // 클릭된 Y 좌표 비율 계산
+                const rect = thumbItem.getBoundingClientRect();
+                const clickY = e.clientY - rect.top;
+                const clickRatio = Math.max(0, Math.min(1, clickY / rect.height));
 
-            const targetScrollY = imgTop + clickRatio * imgHeight - window.innerHeight / 2;
-            window.scrollTo({ top: targetScrollY, behavior: 'smooth' });
-        };
+                // 메인 뷰어 상의 해당 이미지 절대 위치 및 높이 계산
+                const imgRect = wrapper.getBoundingClientRect();
+                const imgTop = imgRect.top + (isCompareMode ? container.scrollTop : (window.pageYOffset || document.documentElement.scrollTop || 0));
+                const imgHeight = imgRect.height;
 
-        // [C] 파이썬에서 실제 이미지 데이터(Base64)를 한 번만 받아와서 양쪽에 동시에 뿌려줍니다.
+                const targetScrollY = imgTop + clickRatio * imgHeight - (isCompareMode ? container.clientHeight / 2 : window.innerHeight / 2);
+                if (isCompareMode) {
+                    container.scrollTo({ top: targetScrollY, behavior: 'auto' });
+                } else {
+                    window.scrollTo({ top: targetScrollY, behavior: 'auto' });
+                }
+            };
+        }
+
+        // [C] 파이썬 API를 비동기 병렬 호출하여 일괄 로드 및 진행률 반영
         if (window.pywebview && window.pywebview.api) {
-            try {
-                const dataUrl = await window.pywebview.api.get_image_data(file.rawPath);
+            window.pywebview.api.get_image_data(file.rawPath).then(dataUrl => {
                 if (dataUrl) {
                     img.onload = () => {
                         if (img.naturalWidth > 0) {
                             img.dataset.ratio = img.naturalHeight / img.naturalWidth;
                         }
+                        wrapper.classList.remove('skeleton');
+                        wrapper.classList.add('loaded');
+                        
+                        loadedCount++;
+                        if (loaderBar) {
+                            const percent = (loadedCount / countTarget) * 100;
+                            loaderBar.style.width = percent + '%';
+                            if (loadedCount === countTarget) {
+                                setTimeout(() => {
+                                    loaderBar.style.opacity = '0';
+                                    updateMinimapViewportIndicator();
+                                    
+                                    // 우측 비교 대상 웹툰 로드 완료 시, 좌측 뷰어의 현재 감상 스크롤 백분율(%)을 기준으로 우측 스크롤을 즉시 정렬합니다. (슬라이스 수/크기가 다른 경우 대비)
+                                    if (isRight && isCompareMode && container && containerRight) {
+                                        const leftScrollHeight = container.scrollHeight - container.clientHeight;
+                                        const leftPercent = leftScrollHeight > 0 ? (container.scrollTop / leftScrollHeight) : 0;
+                                        const rightScrollHeight = containerRight.scrollHeight - containerRight.clientHeight;
+                                        containerRight.scrollTop = rightScrollHeight * leftPercent;
+                                    }
+                                }, 500);
+                            }
+                        }
                     };
                     img.src = dataUrl;
-                    thumbImg.src = dataUrl; 
+                    if (thumbImg) thumbImg.src = dataUrl;
+                } else {
+                    wrapper.classList.remove('skeleton');
+                    loadedCount++;
+                    if (loaderBar) {
+                        const percent = (loadedCount / countTarget) * 100;
+                        loaderBar.style.width = percent + '%';
+                    }
                 }
-            } catch (e) {
-                console.error("이미지 로드 오류:", e);
-            }
+            }).catch(err => {
+                console.error("이미지 로드 오류:", err);
+                wrapper.classList.remove('skeleton');
+                loadedCount++;
+                if (loaderBar) {
+                    const percent = (loadedCount / countTarget) * 100;
+                    loaderBar.style.width = percent + '%';
+                }
+            });
         }
 
         processedCount++;
-        const percent = Math.round((processedCount / totalFiles) * 100);
-    } // [수정] 누락되었던 for 루프 닫는 괄호 복구
-
-    document.body.classList.add('has-images');
-    pageIndicator.style.display = 'block';
-    updatePageIndicator(1);
-    
-    if (window.pywebview && window.pywebview.api) {
-        const settings = await window.pywebview.api.get_settings();
-        if (settings && settings.app) {
-            isMinimapEnabled = settings.app.minimapEnabled !== false;
-            isMinimapPinned = settings.app.minimapPinned === true;
-        }
     }
-    
-    if (typeof updateMinimapUI === 'function') updateMinimapUI(isMinimapEnabled);
-    setupScrollObserver();
 
-    checkResumeHistory(currentFileKey);
+    if (!isRight) {
+        document.body.classList.add('has-images');
+        pageIndicator.style.display = 'block';
+        updatePageIndicator(1);
+        
+        if (window.pywebview && window.pywebview.api) {
+            const settings = await window.pywebview.api.get_settings();
+            if (settings && settings.app) {
+                isMinimapEnabled = settings.app.minimapEnabled !== false;
+                isMinimapPinned = settings.app.minimapPinned === true;
+            }
+        }
+        
+        if (typeof updateMinimapUI === 'function') updateMinimapUI(isMinimapEnabled);
+        setupScrollObserver();
+        checkResumeHistory(currentFileKey);
+    } else {
+        containerRight.classList.add('has-images-right');
+    }
 }
 
 
 // ============================================================
-//  4. 메인 처리 로직
+//  4. 메인 처리 로직 (로컬 드래그 앤 드롭 파일용)
 // ============================================================
-async function startProcess(files) {
+async function startProcess(files, side = 'left') {
     if (files.length === 0) return;
+    const isRight = side === 'right';
+    const vContainer = isRight ? containerRight : container;
+    const navSidebar = document.getElementById('nav-sidebar');
 
-    container.innerHTML = '';
-    navSidebar.innerHTML = '';
-    createdUrls.forEach(url => URL.revokeObjectURL(url));
-    createdUrls = [];
-    
-    // 로딩 처리 제거됨
-
+    vContainer.innerHTML = '';
+    if (!isRight) {
+        if (navSidebar) navSidebar.innerHTML = '';
+        createdUrls.forEach(url => URL.revokeObjectURL(url));
+        createdUrls = [];
+        resetRightPane(); // 새로운 원본 로드 시 우측 분할 화면도 초기 상태로 리셋
+    } else {
+        rightCreatedUrls.forEach(url => URL.revokeObjectURL(url));
+        rightCreatedUrls = [];
+    }
 
     try {
         let imageBlobs = [];
@@ -849,11 +1279,9 @@ async function startProcess(files) {
 
         if (files.length === 1 && (files[0].name.endsWith('.zip') || files[0].name.endsWith('.cbz'))) {
             if (typeof JSZip === 'undefined') throw new Error("JSZip 라이브러리가 필요합니다.");
-            // [개선] 파일명 + 크기 + 수정일자를 조합하여 고유 키를 생성합니다.
             fileKey = `zip_${files[0].name}_${files[0].size}_${files[0].lastModified}`;
             imageBlobs = await unzipFiles(files[0]);
         } else {
-            // [수정] 파일 타입뿐만 아니라 확장자까지 확인하여 더 확실하게 이미지를 필터링합니다.
             const imgs = files.filter(f => {
                 const isImgType = f.type && f.type.startsWith('image/');
                 const isImgExt = /\.(jpg|jpeg|png|gif|webp|bmp)$/i.test(f.name);
@@ -862,33 +1290,39 @@ async function startProcess(files) {
             
             if (imgs.length === 0) throw new Error("인식 가능한 이미지 파일이 없습니다.");
             
-            // [추가] 인식된 파일 개수를 사용자에게 알립니다.
-            showToast(`${imgs.length}개의 이미지를 불러옵니다.`, "camera");
+            showToast(`${imgs.length}개의 이미지를 불러옵니다. (${side === 'left' ? '왼쪽' : '오른쪽'})`, "camera");
             
-            // 파일 이름 순서대로 정렬 (숫자 정렬 포함)
             imgs.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
             imageBlobs = imgs;
-            // [개선] 첫 번째 파일명 + 총 파일 개수 + 첫 번째 파일 크기를 조합하여 고유 키를 생성합니다.
             fileKey = `folder_${imgs[0].name}_${imgs.length}_${imgs[0].size}`;
         }
 
-        totalFiles = imageBlobs.length;
-        currentFileKey = fileKey;
+        if (!isRight) {
+            totalFiles = imageBlobs.length;
+            currentFileKey = fileKey;
+            
+            const settings = await window.pywebview.api.get_settings();
+            isMinimapEnabled = settings.app ? settings.app.minimapEnabled !== false : true;
+            isMinimapPinned = settings.app ? settings.app.minimapPinned === true : false;
+            updateMinimapUI(isMinimapEnabled);
+            pageIndicator.style.display = 'block';
+            updatePageIndicator(1);
+        } else {
+            rightTotalFiles = imageBlobs.length;
+            rightCurrentFileKey = fileKey;
+        }
+        
+        await processImagesInBatches(imageBlobs, side);
 
-        const settings = await window.pywebview.api.get_settings();
-        isMinimapEnabled = settings.app ? settings.app.minimapEnabled !== false : true;
-        isMinimapPinned = settings.app ? settings.app.minimapPinned === true : false;
-        updateMinimapUI(isMinimapEnabled);
-        pageIndicator.style.display = 'block';
-        updatePageIndicator(1);
-        
-        await processImagesInBatches(imageBlobs);
-        body.classList.add('has-images'); 
-        updateMinimapUI(isMinimapEnabled);
-        
-        checkResumeHistory(fileKey);
-        setupScrollObserver();
-        setTimeout(updateMinimapViewportIndicator, 100);
+        if (!isRight) {
+            body.classList.add('has-images'); 
+            updateMinimapUI(isMinimapEnabled);
+            checkResumeHistory(fileKey);
+            setupScrollObserver();
+            setTimeout(updateMinimapViewportIndicator, 100);
+        } else {
+            containerRight.classList.add('has-images-right');
+        }
 
     } catch (err) {
         console.error("처리 오류:", err);
@@ -896,60 +1330,121 @@ async function startProcess(files) {
     }
 }
 
-async function processImagesInBatches(imageBlobs) {
-    const vContainer = document.getElementById('viewer-container');
+async function processImagesInBatches(imageBlobs, side = 'left') {
+    const isRight = side === 'right';
+    const vContainer = isRight ? containerRight : container;
     const navSidebar = document.getElementById('nav-sidebar');
     
+    // 새로운 파일 로드 시 기존 찌꺼기 스크롤 강제 초기화
+    if (isRight) {
+        if (containerRight) containerRight.scrollTop = 0;
+    } else {
+        if (isCompareMode) {
+            if (container) container.scrollTop = 0;
+        } else {
+            window.scrollTo(0, 0);
+        }
+    }
+
     let processedCount = 0;
     const total = imageBlobs.length;
+
+    // 상단 프로그레스 바 상태 초기화
+    const loaderBar = document.getElementById('top-loading-bar');
+    if (loaderBar) {
+        loaderBar.style.opacity = '1';
+        loaderBar.style.width = '0%';
+    }
+    let loadedCount = 0;
 
     for (let i = 0; i < total; i++) {
         const blob = imageBlobs[i];
         const url = URL.createObjectURL(blob);
-        createdUrls.push(url);
+        if (!isRight) {
+            createdUrls.push(url);
+        } else {
+            rightCreatedUrls.push(url);
+        }
 
-        // 메인 이미지
+        // 메인 이미지 및 스켈레톤 틀
+        const wrapper = document.createElement('div');
+        wrapper.className = 'image-wrapper skeleton webtoon-page';
+        wrapper.id = `${side}-file-start-${i}`;
+        wrapper.dataset.fileIndex = i;
+
         const img = document.createElement('img');
-        img.className = 'viewer-image webtoon-page';
-        img.id = `file-start-${i}`;
-        img.dataset.fileIndex = i;
-        img.src = url;
+        img.className = 'viewer-image';
         img.draggable = false;
-        vContainer.appendChild(img);
+        
+        wrapper.appendChild(img);
+        vContainer.appendChild(wrapper);
 
-        // 썸네일
-        const thumbItem = document.createElement('div');
-        thumbItem.className = 'nav-thumb-item';
-        thumbItem.id = `thumb-${i}`;
-        thumbItem.dataset.idx = i;
-
-        const label = document.createElement('div');
-        label.className = 'thumb-label';
-        label.textContent = i + 1;
-        thumbItem.appendChild(label);
-
-        const thumbImg = document.createElement('img');
-        thumbImg.src = url;
-        thumbItem.appendChild(thumbImg);
-        if (navSidebar) navSidebar.appendChild(thumbItem);
-
-        thumbItem.onclick = (e) => {
-            document.querySelectorAll('.nav-thumb-item').forEach(el => el.classList.remove('active'));
-            thumbItem.classList.add('active');
-
-            // 클릭된 Y 좌표 비율 계산
-            const rect = thumbItem.getBoundingClientRect();
-            const clickY = e.clientY - rect.top;
-            const clickRatio = Math.max(0, Math.min(1, clickY / rect.height));
-
-            // 메인 뷰어 상의 해당 이미지 절대 위치 및 높이 계산
-            const imgRect = img.getBoundingClientRect();
-            const imgTop = imgRect.top + (window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0);
-            const imgHeight = imgRect.height;
-
-            const targetScrollY = imgTop + clickRatio * imgHeight - window.innerHeight / 2;
-            window.scrollTo({ top: targetScrollY, behavior: 'smooth' });
+        img.onload = () => {
+            wrapper.classList.remove('skeleton');
+            wrapper.classList.add('loaded');
+            
+            loadedCount++;
+            if (loaderBar) {
+                const percent = (loadedCount / total) * 100;
+                loaderBar.style.width = percent + '%';
+                if (loadedCount === total) {
+                    setTimeout(() => {
+                        loaderBar.style.opacity = '0';
+                        updateMinimapViewportIndicator();
+                        
+                        // 우측 비교 대상 웹툰 로드 완료 시, 좌측 뷰어의 현재 감상 스크롤 백분율(%)을 기준으로 우측 스크롤을 즉시 정렬합니다. (슬라이스 수/크기가 다른 경우 대비)
+                        if (isRight && isCompareMode && container && containerRight) {
+                            const leftScrollHeight = container.scrollHeight - container.clientHeight;
+                            const leftPercent = leftScrollHeight > 0 ? (container.scrollTop / leftScrollHeight) : 0;
+                            const rightScrollHeight = containerRight.scrollHeight - containerRight.clientHeight;
+                            containerRight.scrollTop = rightScrollHeight * leftPercent;
+                        }
+                    }, 500);
+                }
+            }
         };
+        img.src = url;
+
+        let thumbImg = null;
+        // 썸네일 (좌측에만 생성)
+        if (!isRight && navSidebar) {
+            const thumbItem = document.createElement('div');
+            thumbItem.className = 'nav-thumb-item';
+            thumbItem.id = `thumb-${i}`;
+            thumbItem.dataset.idx = i;
+
+            const label = document.createElement('div');
+            label.className = 'thumb-label';
+            label.textContent = i + 1;
+            thumbItem.appendChild(label);
+
+            thumbImg = document.createElement('img');
+            thumbImg.src = url;
+            thumbItem.appendChild(thumbImg);
+            navSidebar.appendChild(thumbItem);
+
+            thumbItem.onclick = (e) => {
+                document.querySelectorAll('.nav-thumb-item').forEach(el => el.classList.remove('active'));
+                thumbItem.classList.add('active');
+
+                // 클릭된 Y 좌표 비율 계산
+                const rect = thumbItem.getBoundingClientRect();
+                const clickY = e.clientY - rect.top;
+                const clickRatio = Math.max(0, Math.min(1, clickY / rect.height));
+
+                // 메인 뷰어 상의 해당 이미지 절대 위치 및 높이 계산
+                const imgRect = wrapper.getBoundingClientRect();
+                const imgTop = imgRect.top + (isCompareMode ? container.scrollTop : (window.pageYOffset || document.documentElement.scrollTop || 0));
+                const imgHeight = imgRect.height;
+
+                const targetScrollY = imgTop + clickRatio * imgHeight - (isCompareMode ? container.clientHeight / 2 : window.innerHeight / 2);
+                if (isCompareMode) {
+                    container.scrollTo({ top: targetScrollY, behavior: 'auto' });
+                } else {
+                    window.scrollTo({ top: targetScrollY, behavior: 'auto' });
+                }
+            };
+        }
 
         processedCount++;
         if (i % 10 === 0) await new Promise(r => requestAnimationFrame(r));
@@ -977,6 +1472,20 @@ async function unzipFiles(file) {
 //  6. UI 유틸리티
 // ============================================================
 async function checkResumeHistory(key) {
+    if (!isResumeEnabled) {
+        // 이어서 보기가 비활성화된 경우, 복구 모달을 건너뛰고 스크롤을 무조건 0(최상단)으로 즉시 초기화합니다.
+        if (isCompareMode) {
+            if (container) container.scrollTop = 0;
+            if (containerRight) containerRight.scrollTop = 0;
+        } else {
+            window.scrollTo(0, 0);
+        }
+        return;
+    }
+
+    if ('scrollRestoration' in history) {
+        history.scrollRestoration = 'manual';
+    }
     const settings = await window.pywebview.api.get_settings();
     const saved = settings.resume ? settings.resume[key] : null;
     if (saved && parseInt(saved) > 100) {
@@ -986,26 +1495,41 @@ async function checkResumeHistory(key) {
             let attempts = 0;
             const maxAttempts = 40; // 최대 4초간 100ms 간격으로 스크롤 시도
             const interval = setInterval(() => {
-                window.scrollTo(0, targetScrollY);
+                if (isCompareMode) {
+                    if (container) container.scrollTop = targetScrollY;
+                    if (containerRight) containerRight.scrollTop = targetScrollY;
+                } else {
+                    window.scrollTo(0, targetScrollY);
+                }
                 attempts++;
-                if (Math.abs(window.scrollY - targetScrollY) < 5 || attempts >= maxAttempts) {
+                
+                const currentScroll = isCompareMode ? (container ? container.scrollTop : 0) : window.scrollY;
+                if (Math.abs(currentScroll - targetScrollY) < 5 || attempts >= maxAttempts) {
                     clearInterval(interval);
                 }
             }, 100);
             resumeModal.style.display = 'none';
         };
-        btnResumeNo.onclick = () => { resumeModal.style.display = 'none'; };
+        btnResumeNo.onclick = () => { 
+            if (isCompareMode) {
+                if (container) container.scrollTop = 0;
+                if (containerRight) containerRight.scrollTop = 0;
+            } else {
+                window.scrollTo(0, 0);
+            }
+            resumeModal.style.display = 'none'; 
+        };
     }
 }
 
-window.addEventListener('scroll', () => {
+function saveScrollHistory() {
     if (scrollSaveTimer) clearTimeout(scrollSaveTimer);
     scrollSaveTimer = setTimeout(async () => {
         if (currentFileKey && window.pywebview && window.pywebview.api) {
             const settings = await window.pywebview.api.get_settings();
             if (!settings.resume) settings.resume = {};
             
-            const currentScrollY = parseInt(window.scrollY);
+            const currentScrollY = isCompareMode ? (container ? parseInt(container.scrollTop) : 0) : parseInt(window.scrollY);
             if (currentScrollY > 100) {
                 settings.resume[currentFileKey] = currentScrollY;
             } else {
@@ -1014,7 +1538,16 @@ window.addEventListener('scroll', () => {
             window.pywebview.api.save_settings(settings);
         }
     }, 500);
-});
+}
+
+window.addEventListener('scroll', saveScrollHistory, { passive: true });
+if (container) {
+    container.addEventListener('scroll', () => {
+        if (isCompareMode) {
+            saveScrollHistory();
+        }
+    });
+}
 
 menuBtn.onclick = () => {
     tLog("⚙️ 메뉴 버튼 클릭됨");
@@ -1038,11 +1571,15 @@ const observer = new IntersectionObserver((entries) => {
 
 function setupScrollObserver() {
     observer.disconnect();
-    container.querySelectorAll('img').forEach(img => observer.observe(img));
+    container.querySelectorAll('.webtoon-page').forEach(page => observer.observe(page));
 }
 
 function updatePageIndicator(curr) { pageIndicator.textContent = `${curr} / ${totalFiles}`; }
 
+document.getElementById('toggle-resume').onchange = (e) => {
+    isResumeEnabled = e.target.checked;
+    window.pywebview.api.save_settings({ app: { resumeEnabled: isResumeEnabled } });
+};
 document.getElementById('toggle-dark').onchange = (e) => {
     body.classList.toggle('dark-mode', e.target.checked);
     window.pywebview.api.save_settings({ app: { darkMode: e.target.checked } });
@@ -1198,6 +1735,82 @@ function animateScrollAnchor(anchor, duration = 300) {
     requestAnimationFrame(step);
 }
 
+// [추가] 비교 모드용 스크롤 앵커 계산 및 동기화 함수들
+function calculateCompareAnchor(side = 'left') {
+    const containerEl = (side === 'right') ? containerRight : container;
+    if (!containerEl) return null;
+    
+    const pages = Array.from(containerEl.querySelectorAll('.webtoon-page'));
+    if (pages.length === 0) return null;
+    
+    const containerRect = containerEl.getBoundingClientRect();
+    const viewportMid = (containerRect.top + containerRect.bottom) / 2;
+    
+    for (let i = 0; i < pages.length; i++) {
+        const rect = pages[i].getBoundingClientRect();
+        if (rect.top <= viewportMid && rect.bottom >= viewportMid) {
+            return { index: i, ratio: (viewportMid - rect.top) / rect.height };
+        }
+    }
+    
+    let closestIndex = 0;
+    let minDistance = Infinity;
+    for (let i = 0; i < pages.length; i++) {
+        const rect = pages[i].getBoundingClientRect();
+        const pageMid = rect.top + rect.height / 2;
+        const dist = Math.abs(pageMid - viewportMid);
+        if (dist < minDistance) {
+            minDistance = dist;
+            closestIndex = i;
+        }
+    }
+    const rect = pages[closestIndex].getBoundingClientRect();
+    const ratio = rect.height > 0 ? (viewportMid - rect.top) / rect.height : 0.5;
+    return { index: closestIndex, ratio: Math.max(0, Math.min(1, ratio)) };
+}
+
+function applyCompareAnchor(leftAnchor, rightAnchor) {
+    if (leftAnchor && container) {
+        const pages = Array.from(container.querySelectorAll('.webtoon-page'));
+        const page = pages[leftAnchor.index];
+        if (page) {
+            const pageRect = page.getBoundingClientRect();
+            const containerRect = container.getBoundingClientRect();
+            const viewportMid = (containerRect.top + containerRect.bottom) / 2;
+            const deltaY = pageRect.top + (pageRect.height * leftAnchor.ratio) - viewportMid;
+            if (Math.abs(deltaY) > 0.1) {
+                container.scrollBy(0, deltaY);
+            }
+        }
+    }
+    if (rightAnchor && containerRight) {
+        const pages = Array.from(containerRight.querySelectorAll('.webtoon-page'));
+        const page = pages[rightAnchor.index];
+        if (page) {
+            const pageRect = page.getBoundingClientRect();
+            const containerRect = containerRight.getBoundingClientRect();
+            const viewportMid = (containerRect.top + containerRect.bottom) / 2;
+            const deltaY = pageRect.top + (pageRect.height * rightAnchor.ratio) - viewportMid;
+            if (Math.abs(deltaY) > 0.1) {
+                containerRight.scrollBy(0, deltaY);
+            }
+        }
+    }
+}
+
+function animateCompareAnchor(leftAnchor, rightAnchor, duration = 300) {
+    const startTime = performance.now();
+    function step(now) {
+        const elapsed = now - startTime;
+        applyCompareAnchor(leftAnchor, rightAnchor);
+        if (elapsed < duration) {
+            requestAnimationFrame(step);
+        }
+    }
+    requestAnimationFrame(step);
+}
+
+
 
 // [1. 슬라이더 조절 시]
 document.getElementById('width-slider').oninput = (e) => {
@@ -1311,6 +1924,41 @@ window.addEventListener('click', () => {
     if (customDropdown) customDropdown.classList.remove('open');
 });
 
+// 캡처 저장 경로 변경 이벤트
+const btnChangeCaptureDir = document.getElementById('btn-change-capture-dir');
+if (btnChangeCaptureDir) {
+    btnChangeCaptureDir.onclick = async (e) => {
+        e.stopPropagation();
+        if (window.pywebview && window.pywebview.api) {
+            const result = await window.pywebview.api.select_capture_dir();
+            if (result) {
+                window.pywebview.api.save_settings({ app: { captureDir: result } });
+                const captureDirValue = document.getElementById('capture-dir-value');
+                if (captureDirValue) {
+                    captureDirValue.textContent = result;
+                    captureDirValue.title = result;
+                }
+            }
+        }
+    };
+}
+
+const btnResetCaptureDir = document.getElementById('btn-reset-capture-dir');
+if (btnResetCaptureDir) {
+    btnResetCaptureDir.onclick = (e) => {
+        e.stopPropagation();
+        if (window.pywebview && window.pywebview.api) {
+            window.pywebview.api.save_settings({ app: { captureDir: "" } });
+            const captureDirValue = document.getElementById('capture-dir-value');
+            if (captureDirValue) {
+                captureDirValue.textContent = "기본 (사진/Webtoon capture)";
+                captureDirValue.title = "기본 사진 저장 폴더";
+            }
+            showToast("기본 저장 폴더로 초기화되었습니다.", "camera");
+        }
+    };
+}
+
 // 단축키 로직 수정 (기존 window.onkeydown을 찾아서 내용을 추가하세요)
 const originalOnKeyDown = window.onkeydown;
 window.onkeydown = (e) => {
@@ -1335,25 +1983,35 @@ window.onkeydown = (e) => {
 
 
 
-    // [추가] M 키를 누르면 미니맵 토글
-    if (key === 'm') {
+    // [추가] M 키를 누르면 미니맵 토글 (한글 입력 상태 'ㅡ' 및 물리 키 'KeyM' 대응)
+    if (key === 'm' || key === 'ㅡ' || e.code === 'KeyM') {
         const toggle = document.getElementById('toggle-minimap');
         if (toggle) {
             toggle.checked = !toggle.checked;
             toggle.dispatchEvent(new Event('change'));
+            e.preventDefault();
+            e.stopPropagation();
         }
     }
 
-    // [추가] C 키를 누르면 현재 화면 캡처
-    if (key === 'c' && !(typeof isSelecting !== 'undefined' && isSelecting)) {
+    // [추가] Alt+C 키를 누르면 현재 화면 캡처 (한글 입력 상태 'ㅊ' 및 물리 키 'KeyC' 대응)
+    if (e.altKey && (key === 'c' || key === 'ㅊ' || e.code === 'KeyC') && !(typeof isSelecting !== 'undefined' && isSelecting)) {
         const btn = document.getElementById('btn-capture');
-        if (btn) btn.click();
+        if (btn) {
+            btn.click();
+            e.preventDefault();
+            e.stopPropagation();
+        }
     }
 
-    // [추가] X 키를 누르면 영역 지정 캡처
-    if (key === 'x' && !(typeof isSelecting !== 'undefined' && isSelecting)) {
+    // [추가] Alt+X 키를 누르면 영역 지정 캡처 (한글 입력 상태 'ㅌ' 및 물리 키 'KeyX' 대응)
+    if (e.altKey && (key === 'x' || key === 'ㅌ' || e.code === 'KeyX') && !(typeof isSelecting !== 'undefined' && isSelecting)) {
         const btn = document.getElementById('btn-crop-capture');
-        if (btn) btn.click();
+        if (btn) {
+            btn.click();
+            e.preventDefault();
+            e.stopPropagation();
+        }
     }
 };
 
@@ -1376,8 +2034,15 @@ window.addEventListener('drop', async (e) => {
     e.preventDefault(); 
     if (dropOverlay) dropOverlay.style.display = 'none';
     
-    // [중요] e.dataTransfer 데이터는 비동기 함수(await)를 거치면 사라질 수 있습니다.
-    // 따라서 동기적으로 미리 Entry들을 뽑아내야 합니다.
+    let side = 'left';
+    if (isCompareMode) {
+        const clientX = e.clientX;
+        const width = window.innerWidth;
+        if (clientX > width / 2) {
+            side = 'right';
+        }
+    }
+
     if (e.dataTransfer && e.dataTransfer.items) {
         const entries = [];
         for (let i = 0; i < e.dataTransfer.items.length; i++) {
@@ -1389,10 +2054,10 @@ window.addEventListener('drop', async (e) => {
         }
         if (entries.length > 0) {
             const files = await getFilesFromEntries(entries);
-            if (files.length > 0) startProcess(files);
+            if (files.length > 0) startProcess(files, side);
         }
     } else if (e.dataTransfer && e.dataTransfer.files.length > 0) {
-        startProcess(Array.from(e.dataTransfer.files));
+        startProcess(Array.from(e.dataTransfer.files), side);
     }
 });
 
@@ -1429,6 +2094,31 @@ async function getFilesFromEntries(entries) {
 // ============================================================
 //  토스트 알림(Toast Notification) 함수
 // ============================================================
+function getToastCenterX() {
+    const container = document.getElementById('viewer-container');
+    const isCompare = document.body.classList.contains('compare-mode');
+    
+    let rect = null;
+    if (isCompare) {
+        const wrapper = document.getElementById('split-wrapper');
+        if (wrapper) rect = wrapper.getBoundingClientRect();
+    } else if (container) {
+        rect = container.getBoundingClientRect();
+    }
+    
+    if (rect) {
+        // Calculate the visible horizontal center of the rect within the viewport
+        const visibleLeft = Math.max(rect.left, 0);
+        const visibleRight = Math.min(rect.right, window.innerWidth);
+        return (visibleLeft + visibleRight) / 2;
+    }
+    
+    // Fallback: center of the viewport excluding the pinned minimap
+    const hasMinimapPinned = document.body.classList.contains('minimap-pinned');
+    const rightOffset = hasMinimapPinned ? 100 : 0;
+    return (window.innerWidth - rightOffset) / 2;
+}
+
 function showToast(message, iconKey = "check") {
     tLog(`토스트 알림: ${message}`);
     let toast = document.getElementById('toast-message');
@@ -1441,6 +2131,11 @@ function showToast(message, iconKey = "check") {
     
     const iconHtml = ICON_MAP[iconKey] || ICON_MAP.check;
     toast.innerHTML = `${iconHtml}<span>${message}</span>`;
+    
+    // Position toast relative to the webtoon image's horizontal center!
+    const centerX = getToastCenterX();
+    toast.style.left = `${centerX}px`;
+    
     toast.classList.add('show');
     
     if (toast.timeoutId) clearTimeout(toast.timeoutId);
@@ -1493,6 +2188,15 @@ window.addEventListener('wheel', (e) => {
                 return;
             }
         }
+    }
+
+    // 비교보기 모드 시 마우스 위치에 따른 스플릿 창 스크롤 처리
+    if (isCompareMode) {
+        e.preventDefault();
+        const activePane = (e.clientX > window.innerWidth / 2) ? containerRight : container;
+        const delta = isStepScrollEnabled ? (e.deltaY > 0 ? 1 : -1) * stepAmount : e.deltaY;
+        activePane.scrollTop += delta;
+        return;
     }
 
     // 1. 빠른 스텝 스크롤 처리
@@ -1599,11 +2303,149 @@ document.getElementById('btn-capture').onclick = async () => {
 
 let isSelecting = false;
 let startX, startY;
+let startScrollLeft = 0;
+let startScrollTop = 0;
+let currentDragX = 0;
+let currentDragY = 0;
+let activeDragContainer = null;
+let autoScrollTimer = null;
+
 const selectionBox = document.createElement('div');
 selectionBox.id = 'selection-box';
 document.body.appendChild(selectionBox);
 
+function updateSelectionBox() {
+    if (!isSelecting) return;
+    
+    let currentScrollLeft = 0;
+    let currentScrollTop = 0;
+    
+    if (isCompareMode) {
+        if (activeDragContainer) {
+            currentScrollLeft = activeDragContainer.scrollLeft;
+            currentScrollTop = activeDragContainer.scrollTop;
+        }
+    } else {
+        currentScrollLeft = window.scrollX || window.pageXOffset;
+        currentScrollTop = window.scrollY || window.pageYOffset;
+    }
+    
+    const deltaScrollX = currentScrollLeft - startScrollLeft;
+    const deltaScrollY = currentScrollTop - startScrollTop;
+    
+    const adjustedStartX = startX - deltaScrollX;
+    const adjustedStartY = startY - deltaScrollY;
+    
+    // 웹툰 이미지 영역 기준 경계값 계산 및 제한 적용
+    const activeContainer = activeDragContainer || container;
+    let limitLeft = -Infinity;
+    let limitRight = Infinity;
+    let limitTop = -Infinity;
+    let limitBottom = Infinity;
+    
+    if (activeContainer) {
+        const pages = Array.from(activeContainer.querySelectorAll('.webtoon-page'));
+        if (pages.length > 0) {
+            const pagesRects = pages.map(p => {
+                const img = p.querySelector('.viewer-image');
+                return img ? img.getBoundingClientRect() : p.getBoundingClientRect();
+            });
+            limitLeft = Math.min(...pagesRects.map(r => r.left));
+            limitRight = Math.max(...pagesRects.map(r => r.right));
+            limitTop = Math.min(...pagesRects.map(r => r.top));
+            limitBottom = Math.max(...pagesRects.map(r => r.bottom));
+        }
+    }
+    
+    const clampedAdjustedStartX = Math.max(limitLeft, Math.min(limitRight, adjustedStartX));
+    const clampedAdjustedStartY = Math.max(limitTop, Math.min(limitBottom, adjustedStartY));
+    
+    const clampedCurrentDragX = Math.max(limitLeft, Math.min(limitRight, currentDragX));
+    const clampedCurrentDragY = Math.max(limitTop, Math.min(limitBottom, currentDragY));
+    
+    const left = Math.min(clampedAdjustedStartX, clampedCurrentDragX);
+    const top = Math.min(clampedAdjustedStartY, clampedCurrentDragY);
+    const width = Math.abs(clampedAdjustedStartX - clampedCurrentDragX);
+    const height = Math.abs(clampedAdjustedStartY - clampedCurrentDragY);
+    
+    selectionBox.style.left = `${left}px`;
+    selectionBox.style.top = `${top}px`;
+    selectionBox.style.width = `${width}px`;
+    selectionBox.style.height = `${height}px`;
+}
+
+function startAutoScrollLoop() {
+    if (autoScrollTimer) return;
+    
+    const threshold = 50;
+    const speed = 15;
+    
+    function tick() {
+        if (!isSelecting) {
+            stopAutoScrollLoop();
+            return;
+        }
+        
+        let scrolled = false;
+        
+        if (isCompareMode) {
+            if (activeDragContainer) {
+                if (currentDragY > window.innerHeight - threshold) {
+                    activeDragContainer.scrollBy(0, speed);
+                    scrolled = true;
+                } else if (currentDragY < threshold) {
+                    activeDragContainer.scrollBy(0, -speed);
+                    scrolled = true;
+                }
+            }
+        } else {
+            if (currentDragY > window.innerHeight - threshold) {
+                window.scrollBy(0, speed);
+                scrolled = true;
+            } else if (currentDragY < threshold) {
+                window.scrollBy(0, -speed);
+                scrolled = true;
+            }
+        }
+        
+        if (scrolled) {
+            updateSelectionBox();
+        }
+        
+        autoScrollTimer = requestAnimationFrame(tick);
+    }
+    
+    autoScrollTimer = requestAnimationFrame(tick);
+}
+
+function stopAutoScrollLoop() {
+    if (autoScrollTimer) {
+        cancelAnimationFrame(autoScrollTimer);
+        autoScrollTimer = null;
+    }
+}
+
 document.getElementById('btn-crop-capture').onclick = async () => {
+    if (isCompareMode) {
+        // 비교보기 모드: 이미지 축소 직전 좌/우 화면의 중앙 앵커를 계산합니다.
+        const leftAnchor = calculateCompareAnchor('left');
+        const rightAnchor = calculateCompareAnchor('right');
+
+        document.body.classList.add('selecting-transition');
+        isSelecting = true;
+        document.body.classList.add('selecting');
+        settingsPanel.classList.remove('show');
+        showToast("마우스로 드래그하여 영역을 선택하세요. (ESC: 취소)", "camera");
+
+        // 150ms 트랜지션 동안 매 프레임 앵커 기반 스크롤 동기화 수행
+        animateCompareAnchor(leftAnchor, rightAnchor, 150);
+
+        setTimeout(() => {
+            document.body.classList.remove('selecting-transition');
+        }, 150);
+        return;
+    }
+
     // 진입 전 앵커를 구하여 이미지 축소 후 스크롤을 유지하도록 설정
     const anchor = calculateRealTimeAnchor();
 
@@ -1632,53 +2474,107 @@ window.addEventListener('mousedown', (e) => {
     // [중요] 브라우저의 기본 드래그/선택 동작을 완전히 막습니다.
     e.preventDefault(); 
 
-    startX = e.pageX;
-    startY = e.pageY;
+    startX = e.clientX;
+    startY = e.clientY;
+    currentDragX = e.clientX;
+    currentDragY = e.clientY;
+    
+    if (isCompareMode) {
+        activeDragContainer = (containerRight && e.clientX >= containerRight.getBoundingClientRect().left)
+            ? containerRight : container;
+        startScrollLeft = activeDragContainer ? activeDragContainer.scrollLeft : 0;
+        startScrollTop = activeDragContainer ? activeDragContainer.scrollTop : 0;
+    } else {
+        activeDragContainer = null;
+        startScrollLeft = window.scrollX || window.pageXOffset;
+        startScrollTop = window.scrollY || window.pageYOffset;
+    }
     
     selectionBox.style.left = `${startX}px`;
     selectionBox.style.top = `${startY}px`;
     selectionBox.style.width = '0px';
     selectionBox.style.height = '0px';
     selectionBox.style.display = 'block';
+    
+    startAutoScrollLoop();
 });
 
 window.addEventListener('mousemove', (e) => {
     if (!isSelecting || e.buttons !== 1) return;
     
-    const currentX = e.pageX;
-    const currentY = e.pageY;
+    currentDragX = e.clientX;
+    currentDragY = e.clientY;
     
-    // [오토 스크롤 로직]
-    // 마우스가 화면 끝에 닿으면 자동으로 스크롤합니다.
-    const threshold = 50;
-    const speed = 15;
-    if (e.clientY > window.innerHeight - threshold) {
-        window.scrollBy(0, speed);
-    } else if (e.clientY < threshold) {
-        window.scrollBy(0, -speed);
-    }
-
-    const width = Math.abs(currentX - startX);
-    const height = Math.abs(currentY - startY);
-    const left = Math.min(currentX, startX);
-    const top = Math.min(currentY, startY);
-
-    selectionBox.style.width = `${width}px`;
-    selectionBox.style.height = `${height}px`;
-    selectionBox.style.left = `${left}px`;
-    selectionBox.style.top = `${top}px`;
+    updateSelectionBox();
 });
 
 window.addEventListener('mouseup', async (e) => {
     if (!isSelecting) return;
+    stopAutoScrollLoop();
     const rect = selectionBox.getBoundingClientRect();
     await endCropCapture(rect);
 });
 
+// 스크롤 시 선택 영역 실시간 업데이트 (마우스 휠 스크롤 대응)
+window.addEventListener('scroll', () => {
+    if (isSelecting) {
+        updateSelectionBox();
+    }
+}, true);
+
 // 영역 지정 캡처 종료/취소 처리 공통 함수
 async function endCropCapture(rect) {
     if (!isSelecting) return;
+    stopAutoScrollLoop();
     
+    if (isCompareMode) {
+        // 비교보기 모드: 이미지 복원 직전 좌/우 화면의 중앙 앵커를 계산합니다.
+        const leftAnchor = calculateCompareAnchor('left');
+        const rightAnchor = calculateCompareAnchor('right');
+
+        document.body.classList.add('selecting-transition');
+        isSelecting = false;
+        document.body.classList.remove('selecting');
+        selectionBox.style.display = 'none';
+
+        // 미니맵 마우스 튐 방지
+        const sidebar = document.getElementById('nav-sidebar');
+        const trigger = document.getElementById('nav-trigger');
+        if (sidebar && trigger) {
+            sidebar.style.setProperty('pointer-events', 'none', 'important');
+            trigger.style.setProperty('pointer-events', 'none', 'important');
+            
+            const restorePointerEvents = () => {
+                if (sidebar) sidebar.style.removeProperty('pointer-events');
+                if (trigger) trigger.style.removeProperty('pointer-events');
+                window.removeEventListener('mousemove', onMouseMove);
+            };
+            
+            const onMouseMove = (e) => {
+                if (e.clientX < window.innerWidth - 120) {
+                    restorePointerEvents();
+                }
+            };
+            
+            window.addEventListener('mousemove', onMouseMove);
+            setTimeout(restorePointerEvents, 1500);
+        }
+
+        // 150ms 트랜지션 동안 매 프레임 앵커 기반 스크롤 동기화 수행
+        animateCompareAnchor(leftAnchor, rightAnchor, 150);
+
+        setTimeout(() => {
+            document.body.classList.remove('selecting-transition');
+        }, 150);
+
+        if (rect && rect.width >= 5 && rect.height >= 5) {
+            await captureHighRes(rect, "Crop");
+        } else {
+            showToast("캡처가 취소되었습니다.", "x");
+        }
+        return;
+    }
+
     // 원래 레이아웃으로 돌아가기 전 앵커를 최신화
     const anchor = calculateRealTimeAnchor();
 
@@ -1738,18 +2634,36 @@ async function captureHighRes(rect, type) {
         btn.innerHTML = `${ICON_MAP.loader}<span>고화질 추출 중...</span>`;
         [menuBtn, pageIndicator].forEach(el => el.style.visibility = 'hidden');
 
-        const pages = Array.from(document.querySelectorAll('.webtoon-page'));
+        // 비교 모드에서는 rect(선택 영역)가 속한 컨테이너만을 대상으로 제한합니다.
+        // document.querySelectorAll로 전체를 잡으면 양쪽 컨테이너의 페이지가 뒤섞여 좌표가 틀어집니다.
+        let captureContainer;
+        if (isCompareMode && containerRight) {
+            const rightBounds = containerRight.getBoundingClientRect();
+            const rectCenter = (rect.left + rect.right) / 2;
+            captureContainer = (rectCenter >= rightBounds.left) ? containerRight : container;
+        } else {
+            captureContainer = container || document.body;
+        }
+
+        const pages = Array.from(captureContainer.querySelectorAll('.webtoon-page'));
         if (pages.length === 0) throw new Error("이미지가 없습니다.");
 
-        const pagesRects = pages.map(p => p.getBoundingClientRect());
+        // [A] 축소된 여백을 갖는 부모 div 대신 실제 [img.viewer-image] 들의 bounding rect를 연산합니다.
+        const pagesRects = pages.map(p => {
+            const img = p.querySelector('.viewer-image');
+            return img ? img.getBoundingClientRect() : p.getBoundingClientRect();
+        });
         const minLeft = Math.min(...pagesRects.map(r => r.left));
         const maxRight = Math.max(...pagesRects.map(r => r.right));
+
+        const minTop = Math.min(...pagesRects.map(r => r.top));
+        const maxBottom = Math.max(...pagesRects.map(r => r.bottom));
 
         // 1. 영역 보정 (배경 제외 및 화면 범위 제한)
         const finalLeft = Math.max(rect.left, minLeft);
         const finalRight = Math.min(rect.right, maxRight);
-        const finalTop = rect.top;
-        const finalBottom = rect.bottom;
+        const finalTop = Math.max(rect.top, minTop);
+        const finalBottom = Math.min(rect.bottom, maxBottom);
         const finalWidth = finalRight - finalLeft;
         const finalHeight = finalBottom - finalTop;
 
@@ -1760,10 +2674,15 @@ async function captureHighRes(rect, type) {
 
         // 2. 배율 계산
         const firstVisiblePage = pages.find(p => {
-            const r = p.getBoundingClientRect();
+            const img = p.querySelector('.viewer-image');
+            if (!img) return false;
+            const r = img.getBoundingClientRect();
             return r.bottom > finalTop && r.top < finalBottom;
         }) || pages[0];
-        const scaleRatio = firstVisiblePage.naturalWidth / firstVisiblePage.offsetWidth;
+        
+        const firstVisibleImg = firstVisiblePage.querySelector('.viewer-image');
+        // 부모 offsetWidth 대신 실제 img의 offsetWidth 를 분모로 사용하여 축소 배율을 정확히 복원합니다!
+        const scaleRatio = firstVisibleImg ? (firstVisibleImg.naturalWidth / firstVisibleImg.offsetWidth) : 1;
         
         // 3. 캔버스 준비
         const canvas = document.createElement('canvas');
@@ -1774,28 +2693,41 @@ async function captureHighRes(rect, type) {
         // 4. 원본 데이터 그리기
         for (let i = 0; i < pages.length; i++) {
             const page = pages[i];
-            const pRect = pagesRects[i];
+            const pRect = pagesRects[i]; // 실제 이미지 바운딩
             const intersectTop = Math.max(finalTop, pRect.top);
             const intersectBottom = Math.min(finalBottom, pRect.bottom);
             
             if (intersectTop < intersectBottom) {
-                const relX = finalLeft - pRect.left;
+                const imgEl = page.querySelector('.viewer-image');
+                if (!imgEl) continue;
+
+                // 이미지 내 소스 시작 X: 선택 영역 left와 이미지 left 차이 (0 이상)
+                const relX = Math.max(0, finalLeft - pRect.left);
                 const relY = intersectTop - pRect.top;
-                const relW = finalWidth;
+                // 이 이미지 상에서의 실제 교차 폭 계산
+                const clampedLeft = Math.max(finalLeft, pRect.left);
+                const clampedRight = Math.min(finalRight, pRect.right);
+                const relW = clampedRight - clampedLeft;
                 const relH = intersectBottom - intersectTop;
 
-                const srcX = relX * (page.naturalWidth / page.offsetWidth);
-                const srcY = relY * (page.naturalHeight / page.offsetHeight);
-                const srcW = relW * (page.naturalWidth / page.offsetWidth);
-                const srcH = relH * (page.naturalHeight / page.offsetHeight);
+                if (relW <= 0) continue;
 
-                const destX = 0;
+                // 비율 환산 시에도 부모가 아닌 실제 img의 크기를 기준으로 나눕니다.
+                const scaleX = imgEl.naturalWidth / imgEl.offsetWidth;
+                const scaleY = imgEl.naturalHeight / imgEl.offsetHeight;
+                const srcX = relX * scaleX;
+                const srcY = relY * scaleY;
+                const srcW = relW * scaleX;
+                const srcH = relH * scaleY;
+
+                // 캔버스 X 시작: 이 이미지가 선택 영역 내에서 시작하는 X 위치
+                const destX = Math.round(Math.max(0, pRect.left - finalLeft) * scaleRatio);
                 const destY = Math.round((intersectTop - finalTop) * scaleRatio);
-                const destW = canvas.width;
+                const destW = Math.round(relW * scaleRatio);
                 // 정수 픽셀 단위로 경계를 일치시켜 빈틈과 이미지 어긋남을 동시에 해결합니다.
                 const destH = Math.round((intersectBottom - finalTop) * scaleRatio) - destY;
 
-                ctx.drawImage(page, srcX, srcY, srcW, srcH, destX, destY, destW, destH);
+                ctx.drawImage(imgEl, srcX, srcY, srcW, srcH, destX, destY, destW, destH);
             }
         }
 
@@ -1831,12 +2763,152 @@ async function captureHighRes(rect, type) {
 
 window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && isSelecting) {
+        stopAutoScrollLoop();
         isSelecting = false;
         document.body.classList.remove('selecting');
         if (selectionBox) selectionBox.style.display = 'none';
         showToast("캡처가 취소되었습니다.", "x");
     }
 });
+
+// ============================================================
+//  10. 비교보기 (Compare Mode) 및 스크롤 동기화 연동
+// ============================================================
+
+let isSyncingScroll = false;
+
+function syncScroll(source, target) {
+    if (!isScrollSync) return;
+    if (isSyncingScroll) return;
+    isSyncingScroll = true;
+    
+    const sourceMax = source.scrollHeight - source.clientHeight;
+    const targetMax = target.scrollHeight - target.clientHeight;
+    
+    if (sourceMax > 0 && targetMax > 0) {
+        const ratio = source.scrollTop / sourceMax;
+        target.scrollTop = ratio * targetMax;
+    }
+    
+    requestAnimationFrame(() => {
+        isSyncingScroll = false;
+    });
+}
+
+if (container) {
+    container.addEventListener('scroll', () => {
+        if (isCompareMode) {
+            syncScroll(container, containerRight);
+            queueMinimapUpdate();
+        }
+    });
+}
+
+if (containerRight) {
+    containerRight.addEventListener('scroll', () => {
+        if (isCompareMode) {
+            syncScroll(containerRight, container);
+            queueMinimapUpdate();
+        }
+    });
+}
+
+// [추가] 컨텍스트 메뉴 상태값 및 온오프 가시성 동적 스타일 제어 함수
+function updateCtxMenuUI() {
+    const compareStatus = document.getElementById('ctx-compare-status');
+    if (compareStatus) {
+        compareStatus.textContent = isCompareMode ? 'On' : 'Off';
+        compareStatus.style.setProperty('color', isCompareMode ? '#34c759' : '#a3a3a3', 'important');
+        compareStatus.style.setProperty('font-weight', isCompareMode ? 'bold' : 'normal', 'important');
+    }
+    
+    const syncStatus = document.getElementById('ctx-sync-status');
+    if (syncStatus) {
+        syncStatus.textContent = isScrollSync ? 'On' : 'Off';
+        syncStatus.style.setProperty('color', isScrollSync ? '#38bdf8' : '#a3a3a3', 'important');
+        syncStatus.style.setProperty('font-weight', isScrollSync ? 'bold' : 'normal', 'important');
+    }
+    
+    const syncItem = document.getElementById('ctx-toggle-sync');
+    if (syncItem) {
+        if (isCompareMode) {
+            syncItem.classList.remove('disabled');
+        } else {
+            syncItem.classList.add('disabled');
+        }
+    }
+}
+
+// [리팩토링] 비교 모드 및 스크롤 동기화 공통 제어 함수
+function setCompareMode(enabled) {
+    if (isCompareMode === enabled) return; // 상태가 바뀌지 않으면 무시
+    
+    // 1. 전환 직전 보고 있던 화면 중앙의 웹툰 컷 앵커 추출
+    let anchor = null;
+    if (isCompareMode) {
+        // 비교 모드 -> 단일 모드: 현재 비교 모드의 좌측 뷰어 기준 앵커 획득
+        anchor = calculateCompareAnchor('left');
+    } else {
+        // 단일 모드 -> 비교 모드: 현재 일반 window 뷰어 기준 앵커 획득
+        anchor = calculateRealTimeAnchor();
+    }
+
+    // 2. 모드 상태 및 CSS 클래스 토글 적용
+    isCompareMode = enabled;
+    body.classList.toggle('compare-mode', isCompareMode);
+    
+    if (containerRight) {
+        containerRight.style.display = isCompareMode ? 'block' : 'none';
+    }
+    
+    if (isCompareMode) {
+        body.style.overflow = 'hidden';
+    } else {
+        body.style.removeProperty('overflow');
+    }
+    
+    // 3. 레이아웃 변화가 완료된 후 새 스크롤 컨텍스트로 앵커 위치 복원
+    if (anchor) {
+        setTimeout(() => {
+            if (isCompareMode) {
+                // 비교 모드가 켜진 경우: 채취한 앵커를 좌측 컨테이너 스크롤에 투영
+                if (container) {
+                    const pages = Array.from(container.querySelectorAll('.webtoon-page'));
+                    const page = pages[anchor.index];
+                    if (page) {
+                        const targetScrollY = page.offsetTop + (page.clientHeight * anchor.ratio) - (container.clientHeight / 2);
+                        container.scrollTop = targetScrollY;
+                    }
+                }
+                // 동기화 옵션 켜져있으면 좌측 스크롤에 맞춰 우측 동기화
+                if (isScrollSync && container && containerRight) {
+                    syncScroll(container, containerRight);
+                }
+            } else {
+                // 단일 모드로 복귀한 경우: 채취한 앵커를 window 스크롤에 투영
+                const pages = document.querySelectorAll('.webtoon-page');
+                const page = pages[anchor.index];
+                if (page) {
+                    const targetScrollY = page.offsetTop + (page.clientHeight * anchor.ratio) - (window.innerHeight / 2);
+                    window.scrollTo(0, targetScrollY);
+                }
+            }
+            updateCtxMenuUI();
+            updateMinimapViewportIndicator();
+        }, 0);
+    } else {
+        updateCtxMenuUI();
+        setTimeout(updateMinimapViewportIndicator, 100);
+    }
+}
+
+function setScrollSync(enabled) {
+    isScrollSync = enabled;
+    if (isScrollSync && container && containerRight) {
+        syncScroll(container, containerRight);
+    }
+    updateCtxMenuUI();
+}
 
 async function tLog(msg) {
     console.log(msg);
@@ -1852,7 +2924,41 @@ async function initialize() {
         await loadSettings();
         restoreSliderLabels();
         updateScroll();
+        
+        // 비교보기 관련 컴포넌트 초기 상태 강제 반영
+        setCompareMode(false);
+        setScrollSync(true);
+        
         await tLog("✅ Initialization completed successfully.");
+
+        // [업데이트 체크]
+        if (window.pywebview && window.pywebview.api) {
+            window.pywebview.api.check_for_updates().then(res => {
+                if (res && res.update_available) {
+                    const updateUi = document.getElementById('update-notification');
+                    const updateDesc = document.getElementById('update-desc');
+                    const btnLater = document.getElementById('btn-update-later');
+                    const btnNow = document.getElementById('btn-update-now');
+                    
+                    if (updateUi && updateDesc) {
+                        updateDesc.textContent = `버전 v${res.version} 업데이트가 있습니다. 지금 다운로드하고 설치하시겠습니까? (자동으로 재시작됩니다)`;
+                        updateUi.style.display = 'flex';
+                        
+                        btnLater.onclick = () => {
+                            updateUi.style.display = 'none';
+                        };
+                        
+                        btnNow.onclick = () => {
+                            btnNow.textContent = "다운로드 중...";
+                            btnNow.disabled = true;
+                            btnLater.disabled = true;
+                            window.pywebview.api.download_and_install_update(res.download_url);
+                        };
+                    }
+                }
+            }).catch(e => console.error("Update check failed", e));
+        }
+
     } catch (e) {
         await tLog(`❌ Initialization failed: ${e.message}`);
         console.error(e);
@@ -1864,3 +2970,188 @@ if (window.pywebview && window.pywebview.api) {
 } else {
     window.addEventListener('pywebviewready', initialize);
 }
+
+let lastRightClickedFilePath = null; // 우클릭된 컷의 실제 파일 경로를 캐싱하는 변수
+
+// [추가] 현재 화면 뷰포트에 가장 많이 노출되어 감상 중인 웹툰 컷의 실제 파일 경로를 획득하는 함수
+function getActiveVisibleFilePath(side = 'left') {
+    // 1. 우클릭이 직접 이미지 위에서 발생한 경우 캐싱된 경로를 최우선 반환
+    if (lastRightClickedFilePath) {
+        return lastRightClickedFilePath;
+    }
+
+    const containerEl = (side === 'right') ? containerRight : container;
+    if (!containerEl) return null;
+    
+    const pages = Array.from(containerEl.querySelectorAll('.webtoon-page'));
+    if (pages.length === 0) return null;
+    
+    // 2. 차선책: 화면 기준 정중앙 Y좌표와 가장 가까운 컷 매칭
+    const viewportCenter = window.innerHeight / 2;
+    
+    let closestPage = pages[0];
+    let minDistance = Infinity;
+    
+    for (let page of pages) {
+        const rect = page.getBoundingClientRect();
+        const pageCenter = (rect.top + rect.bottom) / 2;
+        const distance = Math.abs(pageCenter - viewportCenter);
+        if (distance < minDistance) {
+            minDistance = distance;
+            closestPage = page;
+        }
+    }
+    
+    return closestPage ? closestPage.dataset.rawPath : null;
+}
+
+// ============================================================
+//  11. 커스텀 우클릭 컨텍스트 메뉴 바인딩
+// ============================================================
+const contextMenu = document.getElementById('context-menu');
+let currentSideContext = 'left'; // 우클릭이 발생한 뷰어 위치 컨텍스트 ('left' 또는 'right')
+
+window.addEventListener('contextmenu', (e) => {
+    // 캡처 드래그 중이거나 모달 활성화 중일 때는 우클릭 차단만
+    if (isSelecting) {
+        e.preventDefault();
+        return;
+    }
+    
+    e.preventDefault();
+
+    // 우클릭 타겟 이미지로부터 즉각적인 rawPath 추출 및 캐싱
+    const clickedPage = e.target.closest('.webtoon-page');
+    if (clickedPage && clickedPage.dataset.rawPath) {
+        lastRightClickedFilePath = clickedPage.dataset.rawPath;
+    } else {
+        lastRightClickedFilePath = null;
+    }
+    
+    // 우클릭 마우스 위치에 따른 좌/우 뷰어 컨텍스트 감지
+    const containerRight = document.getElementById('viewer-container-right');
+    const isRightClick = containerRight && (containerRight === e.target || containerRight.contains(e.target));
+    currentSideContext = isRightClick ? 'right' : 'left';
+    
+    const submenuLabel = document.getElementById('ctx-open-submenu-label');
+    if (submenuLabel) {
+        if (isCompareMode) {
+            submenuLabel.textContent = isRightClick ? '이미지 열기 (우측)' : '이미지 열기 (좌측)';
+        } else {
+            submenuLabel.textContent = '이미지 열기';
+        }
+    }
+    
+    // 파일 위치 열기 메뉴 활성화 여부 동기화 (현재 노출 중인 개별 컷 파일 경로 기준)
+    const activePath = getActiveVisibleFilePath(currentSideContext);
+    const locationItem = document.getElementById('ctx-open-location');
+    if (locationItem) {
+        if (activePath) {
+            locationItem.classList.remove('disabled');
+        } else {
+            locationItem.classList.add('disabled');
+        }
+    }
+    
+    // 메뉴 상태값 및 가시성 스타일 일괄 갱신
+    updateCtxMenuUI();
+    
+    // 위치 연산 및 윈도우 삐침 한계선 보정
+    const menuWidth = 190;
+    const menuHeight = 220; // 서브메뉴 추가에 따른 높이 보정
+    let x = e.clientX;
+    let y = e.clientY;
+    
+    if (x + menuWidth > window.innerWidth) x = window.innerWidth - menuWidth - 10;
+    if (y + menuHeight > window.innerHeight) y = window.innerHeight - menuHeight - 10;
+    
+    contextMenu.style.left = `${x}px`;
+    contextMenu.style.top = `${y}px`;
+    contextMenu.style.display = 'block';
+});
+
+// 메뉴 밖 영역 클릭 시 자동 닫기
+window.addEventListener('click', (e) => {
+    if (contextMenu && !contextMenu.contains(e.target)) {
+        contextMenu.style.display = 'none';
+    }
+});
+
+// ESC 키 입력 시 자동 닫기
+window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && contextMenu) {
+        contextMenu.style.display = 'none';
+    }
+});
+
+// 메뉴 아이템별 클릭 바인딩
+document.getElementById('ctx-toggle-compare').onclick = (e) => {
+    e.stopPropagation();
+    setCompareMode(!isCompareMode);
+    contextMenu.style.display = 'none';
+};
+
+document.getElementById('ctx-toggle-sync').onclick = (e) => {
+    e.stopPropagation();
+    if (!isCompareMode) return;
+    setScrollSync(!isScrollSync);
+    contextMenu.style.display = 'none';
+};
+
+// [A] 이미지 열기 서브메뉴 파일/폴더 클릭 처리
+document.getElementById('ctx-open-file').onclick = (e) => {
+    e.stopPropagation();
+    contextMenu.style.display = 'none';
+    if (currentSideContext === 'right') {
+        const target = document.getElementById('right-file-btn');
+        if (target) target.click();
+    } else {
+        const target = document.getElementById('menu-file-btn');
+        if (target) target.click();
+    }
+};
+
+document.getElementById('ctx-open-folder').onclick = (e) => {
+    e.stopPropagation();
+    contextMenu.style.display = 'none';
+    if (currentSideContext === 'right') {
+        const target = document.getElementById('right-folder-btn');
+        if (target) target.click();
+    } else {
+        const target = document.getElementById('menu-folder-btn');
+        if (target) target.click();
+    }
+};
+
+document.getElementById('ctx-open-location').onclick = (e) => {
+    e.stopPropagation();
+    contextMenu.style.display = 'none';
+    const activePath = getActiveVisibleFilePath(currentSideContext);
+    if (activePath && window.pywebview && window.pywebview.api) {
+        window.pywebview.api.open_file_location(activePath);
+    } else {
+        showToast("로드된 파일 위치를 찾을 수 없습니다.", "alert");
+    }
+};
+
+document.getElementById('ctx-capture-screen').onclick = (e) => {
+    e.stopPropagation();
+    contextMenu.style.display = 'none';
+    // 숨겨진 캡처 버튼 이벤트를 시뮬레이션 트리거
+    const target = document.getElementById('btn-capture');
+    if (target) target.click();
+};
+
+document.getElementById('ctx-capture-crop').onclick = (e) => {
+    e.stopPropagation();
+    contextMenu.style.display = 'none';
+    // 숨겨진 영역 캡처 버튼 이벤트를 시뮬레이션 트리거
+    const target = document.getElementById('btn-crop-capture');
+    if (target) target.click();
+};
+
+document.getElementById('ctx-open-menu').onclick = (e) => {
+    e.stopPropagation();
+    contextMenu.style.display = 'none';
+    settingsPanel.classList.add('show');
+};

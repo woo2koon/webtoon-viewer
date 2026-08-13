@@ -4,6 +4,15 @@ import base64
 import json
 import sys
 import threading
+import bottle
+import urllib.parse
+import urllib.request
+import tempfile
+import subprocess
+
+
+
+APP_VERSION = "2.1"
 
 # PyInstaller 빌드 시 리소스 경로 처리를 위한 함수
 def get_resource_path(relative_path):
@@ -29,6 +38,59 @@ class ViewerAPI:
     def __init__(self):
         self._window = None 
 
+    def check_for_updates(self):
+        try:
+            url = "https://api.github.com/repos/woo2koon/webtoon-viewer/releases/latest"
+            req = urllib.request.Request(url, headers={'User-Agent': 'WebtoonViewerUpdater'})
+            with urllib.request.urlopen(req) as response:
+                if response.status == 200:
+                    data = json.loads(response.read().decode('utf-8'))
+                    latest_version = data.get('tag_name', '').lstrip('v')
+                    if latest_version and latest_version != APP_VERSION:
+                        # Version comparison (only update if latest > current)
+                        try:
+                            v_latest = [int(x) for x in latest_version.split('.') if x.isdigit()]
+                            v_current = [int(x) for x in APP_VERSION.split('.') if x.isdigit()]
+                            if v_latest and v_current and v_latest <= v_current:
+                                return {"update_available": False}
+                        except Exception:
+                            pass
+                            
+                        # Find the exe asset
+                        download_url = None
+                        for asset in data.get('assets', []):
+                            if asset['name'].endswith('.exe'):
+                                download_url = asset['browser_download_url']
+                                break
+                        if download_url:
+                            return {"update_available": True, "version": latest_version, "download_url": download_url}
+            return {"update_available": False}
+        except Exception as e:
+            print(f"Update check failed: {e}")
+            return {"update_available": False, "error": str(e)}
+
+    def download_and_install_update(self, download_url):
+        def _download_task():
+            try:
+                temp_dir = tempfile.gettempdir()
+                filename = download_url.split('/')[-1]
+                filepath = os.path.join(temp_dir, filename)
+                
+                req = urllib.request.Request(download_url, headers={'User-Agent': 'WebtoonViewerUpdater'})
+                with urllib.request.urlopen(req) as response, open(filepath, 'wb') as out_file:
+                    out_file.write(response.read())
+                
+                # Start installer and exit
+                os.startfile(filepath)
+                if self._window:
+                    self._window.destroy()
+            except Exception as e:
+                print(f"Download or install failed: {e}")
+
+        # Run in a separate thread so we don't block the UI during download
+        threading.Thread(target=_download_task, daemon=True).start()
+        return True
+
     def get_settings(self):
         return load_all_settings()
 
@@ -53,6 +115,57 @@ class ViewerAPI:
             files = [os.path.basename(f) for f in result]
             return {"folderPath": folder_path, "files": files}
         return None
+
+    def select_capture_dir(self):
+        result = self._window.create_file_dialog(webview.FileDialog.FOLDER)
+        if result:
+            folder_path = os.path.normpath(result[0]).replace("\\", "/")
+            return folder_path
+        return None
+    
+    def open_file_location(self, path):
+        if not path:
+            return False
+        import subprocess
+        try:
+            norm_path = os.path.normpath(path)
+            if os.path.exists(norm_path):
+                if sys.platform == 'darwin':
+                    if os.path.isfile(norm_path):
+                        # macOS에서 파일을 선택한 상태로 파인더 실행
+                        subprocess.run(['open', '-R', norm_path])
+                    else:
+                        # macOS에서 폴더 직접 열기
+                        subprocess.run(['open', norm_path])
+                elif sys.platform == 'win32':
+                    if os.path.isfile(norm_path):
+                        # 윈도우에서 파일을 선택한 상태로 탐색기 실행
+                        subprocess.run(f'explorer /select,"{norm_path}"', shell=True)
+                    else:
+                        # 윈도우에서 폴더 직접 열기
+                        os.startfile(norm_path)
+                else:
+                    # 리눅스 등 기타 OS
+                    if os.path.isfile(norm_path):
+                        parent = os.path.dirname(norm_path)
+                        subprocess.run(['xdg-open', parent])
+                    else:
+                        subprocess.run(['xdg-open', norm_path])
+                return True
+            else:
+                # Zip 압축 해제 임시 폴더 경로 등 실존하지 않는 경우 상위 부모 폴더 탐색
+                parent = os.path.dirname(norm_path)
+                if os.path.exists(parent):
+                    if sys.platform == 'darwin':
+                        subprocess.run(['open', parent])
+                    elif sys.platform == 'win32':
+                        os.startfile(parent)
+                    else:
+                        subprocess.run(['xdg-open', parent])
+                    return True
+        except Exception as e:
+            print(f"Error opening folder: {e}")
+        return False
     
     def get_image_data(self, file_path):
         try:
@@ -73,7 +186,24 @@ class ViewerAPI:
         try:
             header, encoded = data_url.split(",", 1)
             data = base64.b64decode(encoded)
-            download_path = os.path.join(os.path.expanduser("~"), "Downloads", filename)
+            
+            settings = load_all_settings()
+            capture_dir = settings.get("app", {}).get("captureDir", "")
+            
+            # 사용자 사진(Pictures) 폴더 경로를 1순위 기본값으로 사용
+            if not capture_dir or not os.path.exists(capture_dir):
+                pictures_dir = os.path.join(os.path.expanduser("~"), "Pictures")
+                if os.path.exists(pictures_dir):
+                    default_dir = os.path.join(pictures_dir, "Webtoon capture")
+                else:
+                    # 사진 폴더가 없는 예외적 경우 다운로드 폴더 사용
+                    default_dir = os.path.join(os.path.expanduser("~"), "Downloads", "Webtoon capture")
+                
+                os.makedirs(default_dir, exist_ok=True)
+                download_path = os.path.join(default_dir, filename)
+            else:
+                download_path = os.path.join(capture_dir, filename)
+                
             with open(download_path, "wb") as f:
                 f.write(data)
             print(f"저장 완료: {download_path}")
@@ -127,7 +257,8 @@ def load_all_settings():
             "scrollAccel": False,
             "stepScroll": True,
             "stepAmount": 100,
-            "minimapEnabled": True
+            "minimapEnabled": True,
+            "captureDir": ""
         },
         "resume": {}
     }
@@ -197,6 +328,32 @@ def sync_window_settings(window):
     except Exception as e:
         print(f"창 설정 동기화 실패: {e}")
 
+@bottle.route('/local-image')
+def serve_local_image():
+    file_path = bottle.request.query.get('path')
+    if not file_path:
+        return bottle.HTTPError(400, "Missing path parameter")
+        
+    try:
+        # WSGI 표준에 의해 latin-1으로 잘못 해독된 한글 바이트를 원본 UTF-8로 정교하게 재복원합니다.
+        file_path = file_path.encode('latin1').decode('utf-8')
+    except Exception as e:
+        print(f"[STREAM_ERR] 한글 복원 실패: {e}")
+        
+    file_path = os.path.normpath(file_path)
+    
+    if os.path.exists(file_path) and os.path.isfile(file_path):
+        ext = file_path.split('.')[-1].lower()
+        mime = f"image/{ext}" if ext != 'jpg' else "image/jpeg"
+        bottle.response.content_type = mime
+        try:
+            with open(file_path, 'rb') as f:
+                return f.read()
+        except Exception as e:
+            return bottle.HTTPError(500, f"Error reading file: {e}")
+    else:
+        return bottle.HTTPError(404, f"File not found: {file_path}")
+
 def start_app():
     api = ViewerAPI()
     html_path = get_resource_path('viewer.html')
@@ -204,8 +361,12 @@ def start_app():
     settings = load_all_settings()
     window_cfg = settings.get("window", {})
 
+    title = 'Webtoon Viewer Pro'
+    if sys.platform == 'darwin':
+        title = ''
+
     window = webview.create_window(
-        'Webtoon Viewer Pro', 
+        title, 
         html_path, 
         js_api=api,
         width=int(window_cfg.get("width", 690)), 
@@ -219,10 +380,9 @@ def start_app():
     # 창 설정 실시간 동기화
     window.events.resized += lambda: sync_window_settings(window)
     window.events.moved += lambda: sync_window_settings(window)
-    window.events.closing += lambda: sync_window_settings(window)
     
     is_frozen = hasattr(sys, 'frozen')
-    webview.start(debug=not is_frozen, storage_path=STORAGE_PATH, private_mode=False)
+    webview.start(debug=False, storage_path=STORAGE_PATH, private_mode=False)
 
 if __name__ == '__main__':
     start_app()
