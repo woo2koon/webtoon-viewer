@@ -11,6 +11,7 @@ stylePatch.innerHTML = `
     #nav-sidebar {
         display: flex !important;
         flex-direction: column !important;
+        gap: 5px !important;
         overflow-y: auto !important;
         flex-wrap: nowrap !important;
         height: 100vh !important;
@@ -689,6 +690,7 @@ const ICON_MAP = {
 
 let isMinimapEnabled = true; // 여기에 한 번만 선언합니다.
 let isMinimapPinned = false; // 미니맵 고정(Lock) 여부
+let isMinimapPageScrollEnabled = true; // 미니맵 페이지 넘김(Page Turn) 연동 여부
 
 // [추가] 순차적 백그라운드 사전 로드(Queue Preloader)를 위한 전역 제어 변수 및 헬퍼 함수
 const preloadQueue = []; // { index, file, wrapper, img, thumbImg } 로딩 대기 큐
@@ -811,6 +813,17 @@ const accelFactor = 0.7;
 function updateMinimapUI(enabled) {
     const trigger = document.getElementById('nav-trigger');
     const sidebar = document.getElementById('nav-sidebar');
+    const scrollRow = document.getElementById('minimap-scroll-row');
+    const useRow = document.getElementById('minimap-use-row');
+    
+    // 설정창 내 미니맵 스크롤 활성화 토글 행의 가시성을 '미니맵 사용' 토글 상태에 즉각 연동
+    if (scrollRow) {
+        scrollRow.style.setProperty('display', enabled ? 'flex' : 'none', 'important');
+    }
+    if (useRow) {
+        useRow.style.setProperty('border-bottom', 'none', 'important');
+    }
+
     // 이미지가 하나라도 로드되었는지 확인
     const hasImages = document.body.classList.contains('has-images');
 
@@ -890,8 +903,8 @@ function updateMinimapUI(enabled) {
         setTimeout(updateMinimapViewportIndicator, 50);
     } else {
         // 미니맵 미사용 시: 트리거를 숨기고, 사이드바를 강제로 화면 밖(100%)으로 밀어냅니다.
-        trigger.style.setProperty('display', 'none', 'important');
-        sidebar.style.setProperty('transform', 'translateX(100%)', 'important');
+        if (trigger) trigger.style.setProperty('display', 'none', 'important');
+        if (sidebar) sidebar.style.setProperty('transform', 'translateX(100%)', 'important');
         
         // 고정 클래스 제거
         body.classList.remove('minimap-pinned');
@@ -1060,12 +1073,18 @@ async function loadSettings() {
     // 8. 미니맵
     isMinimapEnabled = app.minimapEnabled !== false;
     isMinimapPinned = app.minimapPinned === true;
+    isMinimapPageScrollEnabled = app.minimapPageScroll !== false;
     body.classList.toggle('minimap-pinned', isMinimapPinned);
 
     const minimapToggle = document.getElementById('toggle-minimap');
     if(minimapToggle) {
         minimapToggle.checked = isMinimapEnabled;
         updateMinimapUI(isMinimapEnabled);
+    }
+
+    const minimapPageScrollToggle = document.getElementById('toggle-minimap-page-scroll');
+    if (minimapPageScrollToggle) {
+        minimapPageScrollToggle.checked = isMinimapPageScrollEnabled;
     }
 
     // 9. 캡처 저장 포맷
@@ -1662,13 +1681,49 @@ function saveScrollHistory() {
     }, 500);
 }
 
-window.addEventListener('scroll', saveScrollHistory, { passive: true });
+function snapMinimapToActiveThumb(thumb) {
+    if (!thumb || !isMinimapPageScrollEnabled) return;
+    const sidebar = document.getElementById('nav-sidebar');
+    if (!sidebar) return;
+    
+    const thumbTop = thumb.offsetTop;
+    const thumbBottom = thumbTop + thumb.offsetHeight;
+    const viewTop = sidebar.scrollTop;
+    const viewBottom = viewTop + sidebar.clientHeight;
+    
+    // 현재 썸네일이 미니맵 화면 범위 밖에 있다면 (미니맵을 휠로 탐색하다 돌아온 경우 포함), 해당 썸네일 페이지로 즉시 복귀 점프
+    if (thumbBottom > viewBottom) {
+        sidebar.scrollTo({
+            top: Math.max(0, thumbTop - 10),
+            behavior: 'auto'
+        });
+    } else if (thumbTop < viewTop) {
+        sidebar.scrollTo({
+            top: Math.max(0, thumbBottom - sidebar.clientHeight + 10),
+            behavior: 'auto'
+        });
+    }
+}
+
+let currentActiveThumb = null;
+
+window.addEventListener('scroll', () => {
+    saveScrollHistory();
+    // 뷰어 스크롤 시 미니맵 수동 탐색 상태를 해제하고 현재 활성 컷 위치로 자동 동기화
+    if (!isHoveringSidebar && currentActiveThumb) {
+        snapMinimapToActiveThumb(currentActiveThumb);
+    }
+}, { passive: true });
+
 if (container) {
     container.addEventListener('scroll', () => {
         if (isCompareMode) {
             saveScrollHistory();
         }
-    });
+        if (!isHoveringSidebar && currentActiveThumb) {
+            snapMinimapToActiveThumb(currentActiveThumb);
+        }
+    }, { passive: true });
 }
 
 menuBtn.onclick = () => {
@@ -1685,6 +1740,12 @@ const observer = new IntersectionObserver((entries) => {
             const thumb = document.getElementById(`thumb-${idx}`);
             if (thumb) {
                 thumb.classList.add('active');
+                currentActiveThumb = thumb;
+                
+                // [프리미어 프로 타임라인 Page Scroll 방식]
+                if (isMinimapPageScrollEnabled && !isHoveringSidebar) {
+                    snapMinimapToActiveThumb(thumb);
+                }
             }
             updatePageIndicator(idx + 1);
         }
@@ -2005,6 +2066,14 @@ document.getElementById('toggle-minimap').onchange = (e) => {
         body.classList.remove('no-transition');
     }, 50);
 };
+
+const minimapPageScrollToggle = document.getElementById('toggle-minimap-page-scroll');
+if (minimapPageScrollToggle) {
+    minimapPageScrollToggle.onchange = (e) => {
+        isMinimapPageScrollEnabled = e.target.checked;
+        window.pywebview.api.save_settings({ app: { minimapPageScroll: isMinimapPageScrollEnabled } });
+    };
+}
 
 // 캡처 포맷 변경 이벤트
 function updateCustomDropdownUI(format) {
@@ -2333,11 +2402,14 @@ window.addEventListener('wheel', (e) => {
                 e.clientY >= rect.top &&
                 e.clientY <= rect.bottom
             );
+            isHoveringSidebar = isOverSidebar;
             if (isOverSidebar) {
                 e.preventDefault();
                 sidebar.scrollTop += e.deltaY;
                 return;
             }
+        } else {
+            isHoveringSidebar = false;
         }
     }
 

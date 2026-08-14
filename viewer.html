@@ -160,7 +160,7 @@
             position: fixed; top: 0; right: 0; bottom: 0; width: 110px;
             background-color: var(--sidebar-bg); border-left: 1px solid var(--sidebar-border); z-index: 301;
             transform: translateX(100%); transition: transform 0.3s, background-color 0.3s;
-            display: flex; flex-direction: column; gap: 10px; padding: 15px 10px; box-sizing: border-box;
+            display: flex; flex-direction: column; gap: 5px; padding: 15px 10px; box-sizing: border-box;
             overflow-y: auto;
             position: relative; /* 자식 absolute 기준이 되기 위해 명시 */
         }
@@ -859,9 +859,13 @@
             <div class="group-label" style="margin-top:0; margin-bottom: 4px;"><span>스텝 거리</span><span id="step-value">100px</span></div>
             <input type="range" id="step-slider" min="50" max="500" value="100" step="50">
         </div>
-        <label class="toggle-row" style="border-bottom: none;">
+        <label class="toggle-row" id="minimap-use-row" style="border-bottom: none !important;">
             <span class="toggle-text">미니맵 사용 (M)</span>
             <input type="checkbox" id="toggle-minimap" class="toggle-switch" checked>
+        </label>
+        <label class="toggle-row" id="minimap-scroll-row" style="border-bottom: none !important;">
+            <span class="toggle-text">미니맵 스크롤 활성화</span>
+            <input type="checkbox" id="toggle-minimap-page-scroll" class="toggle-switch" checked>
         </label>
             <!-- 호환성 유지용 숨김 요소 (에러 방지용) -->
             <button id="btn-capture" style="display: none;"></button>
@@ -911,6 +915,6 @@
         </div>
     </div>
     
-    <script src="viewer.js?v=3.0.1"></script>
+    <script src="viewer.js?v=3.1.2"></script>
 </body>
 </html>
