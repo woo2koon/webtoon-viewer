@@ -8,5 +8,7 @@ __pycache__/
 dist/
 build/
 *.spec
+!WebtoonViewerPro.spec
 *.exe
 *.png
+!logo.png

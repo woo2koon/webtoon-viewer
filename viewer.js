@@ -366,13 +366,43 @@ stylePatch.innerHTML = `
         font-weight: bold !important; cursor: pointer; transition: 0.2s;
     }
     .size-btn.active { background: #007aff !important; color: #fff !important; }
-    input[type=range] { width: 100%; accent-color: #007aff !important; cursor: pointer; }
-    .slider-labels { display: flex; justify-content: space-between; font-size: 11px; color: #888; margin-top: 5px; font-weight: bold; }
+    input[type=range] {
+        width: 100% !important;
+        margin: 8px 0 0 0 !important;
+        padding: 0 !important;
+        display: block !important;
+        box-sizing: border-box !important;
+        accent-color: #007aff !important;
+        cursor: pointer;
+    }
+    .slider-labels {
+        display: flex !important;
+        width: 100% !important;
+        margin-top: 6px !important;
+        font-size: 11px !important;
+        color: #888 !important;
+        font-weight: bold !important;
+        padding: 0 !important;
+        box-sizing: border-box !important;
+    }
+    .slider-labels span {
+        flex: 1 !important;
+    }
+    .slider-labels span:first-child {
+        text-align: left !important;
+    }
+    .slider-labels span:nth-child(2) {
+        text-align: center !important;
+    }
+    .slider-labels span:last-child {
+        text-align: right !important;
+    }
 
     #settings-panel input[type="checkbox"] {
         appearance: none; width: 40px; height: 22px; background: #555;
         border-radius: 20px; position: relative; cursor: pointer; outline: none;
-        transition: background 0.3s; vertical-align: middle;
+        transition: background 0.3s; margin: 0 !important;
+        flex-shrink: 0;
     }
     #settings-panel input[type="checkbox"]::after {
         content: ''; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px;
@@ -383,7 +413,27 @@ stylePatch.innerHTML = `
     #settings-panel input[type="checkbox"]:checked::after { transform: translateX(18px); }
     #settings-panel label {
         display: flex !important; justify-content: space-between !important;
-        align-items: center !important; margin-bottom: 8px !important; cursor: pointer;
+        align-items: center !important; margin: 0 !important; cursor: pointer;
+    }
+    #settings-panel label.toggle-row, #settings-panel .accordion-header.toggle-row {
+        display: flex !important; justify-content: space-between !important;
+        align-items: center !important;
+        height: 42px !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        border-bottom: 1px solid #333 !important;
+        box-sizing: border-box !important;
+    }
+    #settings-panel label.toggle-row:last-of-type,
+    #settings-panel label.toggle-row[style*="border-bottom: none"],
+    #settings-panel label.toggle-row[style*="border-bottom:none"] {
+        border-bottom: none !important;
+    }
+    #settings-panel .toggle-text {
+        font-size: 14px !important;
+        font-weight: 500 !important;
+        line-height: 1 !important;
+        margin: 0 !important;
     }
 
     /* 6. 토스트 알림 메시지 스타일 */
@@ -1955,6 +2005,21 @@ if (btnResetCaptureDir) {
                 captureDirValue.title = "기본 사진 저장 폴더";
             }
             showToast("기본 저장 폴더로 초기화되었습니다.", "camera");
+        }
+    };
+}
+
+// 캡처 설정 아코디언 접기/펼치기 토글 이벤트
+const accordionCaptureHeader = document.getElementById('accordion-capture-header');
+const accordionCaptureContent = document.getElementById('accordion-capture-content');
+if (accordionCaptureHeader && accordionCaptureContent) {
+    accordionCaptureHeader.onclick = (e) => {
+        e.stopPropagation();
+        const isOpen = accordionCaptureContent.style.display !== 'none';
+        accordionCaptureContent.style.display = isOpen ? 'none' : 'block';
+        const icon = accordionCaptureHeader.querySelector('.accordion-icon');
+        if (icon) {
+            icon.style.transform = isOpen ? 'rotate(0deg)' : 'rotate(180deg)';
         }
     };
 }

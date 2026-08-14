@@ -45,6 +45,9 @@
             overflow-x: auto; 
             scrollbar-width: thin;
         }
+        button, input, select, textarea {
+            font-family: inherit;
+        }
         body.dark-mode { --bg-color: #1a1a1a; --text-color: #eee; }
         
         /* 뷰어 컨테이너 (이음새 제거) */
@@ -129,16 +132,29 @@
         
         .toggle-row {
             display: flex; justify-content: space-between; align-items: center;
-            padding: 10px 0; border-bottom: 1px solid #333; cursor: pointer;
+            height: 42px;
+            padding: 0;
+            border-bottom: 1px solid #333;
+            cursor: pointer;
+            margin: 0;
+            box-sizing: border-box;
         }
         .toggle-row:last-child { border-bottom: none; }
-        .toggle-text { font-size: 14px; font-weight: 500; }
+        .toggle-text {
+            font-size: 14px;
+            font-weight: 500;
+            line-height: 1;
+            margin: 0;
+            display: flex;
+            align-items: center;
+        }
 
         /* 토글 스위치 CSS */
         .toggle-switch {
             appearance: none; width: 44px; height: 24px; background: #555;
             border-radius: 24px; position: relative; cursor: pointer; outline: none;
-            transition: background 0.3s;
+            transition: background 0.3s; margin: 0;
+            flex-shrink: 0;
         }
         .toggle-switch::after {
             content: ''; position: absolute; top: 2px; left: 2px;
@@ -164,8 +180,37 @@
         }
         .size-select-btn.active { background: var(--accent-color); color: white; border-color: var(--accent-color); }
         
-        input[type=range] { width: 100%; accent-color: var(--accent-color); cursor: pointer; margin-top: 6px; }
-        .slider-labels { display: flex; justify-content: space-between; font-size: 11px; color: #777; margin-top: 5px; font-weight: bold; }
+        input[type=range] {
+            width: 100%;
+            margin: 8px 0 0 0;
+            padding: 0;
+            display: block;
+            box-sizing: border-box;
+            accent-color: var(--accent-color);
+            cursor: pointer;
+        }
+        .slider-labels {
+            display: flex;
+            width: 100%;
+            margin-top: 6px;
+            font-size: 11px;
+            color: #777;
+            font-weight: bold;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        .slider-labels span {
+            flex: 1;
+        }
+        .slider-labels span:first-child {
+            text-align: left;
+        }
+        .slider-labels span:nth-child(2) {
+            text-align: center;
+        }
+        .slider-labels span:last-child {
+            text-align: right;
+        }
 
         /* 로딩 화면 & 게이지바 */
     /* 로딩 화면 제거됨 */
@@ -492,69 +537,74 @@
             <button class="size-select-btn" id="btn-original">원본 크기</button>
         </div>
         
-        <div id="width-slider-container">
+        <div id="width-slider-container" style="border-bottom: 1px solid #333; padding-bottom: 12px;">
             <input type="range" id="width-slider" min="60" max="140" value="100" step="10">
             <div class="slider-labels">
                 <span>좁게</span><span>기본</span><span>넓게</span>
             </div>
         </div>
 
-        <div class="group-label"><span>캡처 설정</span></div>
-        <div class="toggle-row" style="border-bottom: none;">
-            <span class="toggle-text">저장 포맷</span>
-            <div class="custom-dropdown" id="dropdown-capture-format">
-                <div class="dropdown-trigger">
-                    <span id="selected-format-label">PNG</span>
-                    <svg class="icon" style="width: 12px; height: 12px; transition: transform 0.2s;" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+        <div class="accordion-section" id="accordion-capture">
+            <div class="accordion-header toggle-row" id="accordion-capture-header" style="user-select: none;">
+                <span class="toggle-text" style="font-weight: 500;">캡처 설정</span>
+                <svg class="icon accordion-icon" style="width: 14px; height: 14px; transition: transform 0.3s; stroke: #aaa;" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+            </div>
+            <div class="accordion-content" id="accordion-capture-content" style="display: none; padding-bottom: 8px; border-bottom: 1px solid #333;">
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0;">
+                    <span class="toggle-text">저장 포맷</span>
+                    <div class="custom-dropdown" id="dropdown-capture-format">
+                        <div class="dropdown-trigger">
+                            <span id="selected-format-label">PNG</span>
+                            <svg class="icon" style="width: 12px; height: 12px; transition: transform 0.2s;" viewBox="0 0 24 24"><polyline points="6 9 12 15 18 9"/></svg>
+                        </div>
+                        <div class="dropdown-options">
+                            <div class="dropdown-option" data-value="png">PNG</div>
+                            <div class="dropdown-option" data-value="jpeg">JPG</div>
+                            <div class="dropdown-option" data-value="webp">WebP</div>
+                        </div>
+                    </div>
                 </div>
-                <div class="dropdown-options">
-                    <div class="dropdown-option" data-value="png">PNG</div>
-                    <div class="dropdown-option" data-value="jpeg">JPG</div>
-                    <div class="dropdown-option" data-value="webp">WebP</div>
+                <div style="display: flex; flex-direction: column; align-items: stretch; gap: 6px; padding: 8px 0 4px 0;">
+                    <div class="group-label" style="display: flex; justify-content: space-between; align-items: center; margin-top: 0;">
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <span class="toggle-text">저장 경로</span>
+                            <button id="btn-change-capture-dir" class="action-btn btn-secondary" style="width: auto; padding: 3px 8px; margin: 0; font-size: 11px; height: auto; border-radius: 4px;">변경</button>
+                        </div>
+                        <button id="btn-reset-capture-dir" class="action-btn" style="width: auto; padding: 3px 8px; margin: 0; font-size: 11px; height: auto; background: #dc3545; color: #fff; border: 1px solid #b02a37; border-radius: 4px; cursor: pointer;">초기화</button>
+                    </div>
+                    <div id="capture-dir-value" style="font-size: 11px; color: #888; text-align: left; word-break: break-all; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 6px 8px; background: #222; border-radius: 4px; border: 1px solid #333;" title="기본 사진 저장 폴더">기본 (사진/Webtoon capture)</div>
                 </div>
             </div>
-        </div>
-        <div class="toggle-row" style="flex-direction: column; align-items: stretch; gap: 6px; border-bottom: none; padding: 8px 0;">
-            <div class="group-label">
-                <span class="toggle-text">저장 경로</span>
-                <div style="display: flex; gap: 4px;">
-                    <button id="btn-change-capture-dir" class="action-btn btn-secondary" style="width: auto; padding: 4px 10px; margin: 0; font-size: 11px; height: auto;">변경</button>
-                    <button id="btn-reset-capture-dir" class="action-btn btn-secondary" style="width: auto; padding: 4px 10px; margin: 0; font-size: 11px; height: auto; background: #333; color: #ccc; border: 1px solid #444;">초기화</button>
-                </div>
-            </div>
-            <div id="capture-dir-value" style="font-size: 11px; color: #888; text-align: left; word-break: break-all; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 6px 8px; background: #222; border-radius: 4px; border: 1px solid #333;" title="기본 사진 저장 폴더">기본 (사진/Webtoon capture)</div>
         </div>
 
-        
-        <div style="margin-top: 12px; border-top: 1px solid #333; padding-top: 6px;">
-            <label class="toggle-row">
-                <span class="toggle-text">이어서 보기 활성화</span>
-                <input type="checkbox" id="toggle-resume" class="toggle-switch" checked>
-            </label>
-            <label class="toggle-row">
-                <span class="toggle-text">다크 모드</span>
-                <input type="checkbox" id="toggle-dark" class="toggle-switch">
-            </label>
-            <label class="toggle-row">
-                <span class="toggle-text">컷 간격 제거</span>
-                <input type="checkbox" id="toggle-spacing" class="toggle-switch" checked>
-            </label>
-            <label class="toggle-row">
-                <span class="toggle-text">스크롤 가속 (Smooth)</span>
-                <input type="checkbox" id="toggle-accel" class="toggle-switch">
-            </label>
-            <label class="toggle-row">
-                <span class="toggle-text">빠른 스텝 스크롤 (Step)</span>
-                <input type="checkbox" id="toggle-step-scroll" class="toggle-switch" checked>
-            </label>
-            <div id="step-slider-container" style="display: block; padding: 6px 0;">
-                <div class="group-label" style="margin-top:0;"><span>스텝 거리</span><span id="step-value">100px</span></div>
-                <input type="range" id="step-slider" min="50" max="500" value="100" step="50">
-            </div>
-            <label class="toggle-row">
-                <span class="toggle-text">미니맵 사용 (M)</span>
-                <input type="checkbox" id="toggle-minimap" class="toggle-switch" checked>
-            </label>
+        <label class="toggle-row">
+            <span class="toggle-text">이어서 보기 활성화</span>
+            <input type="checkbox" id="toggle-resume" class="toggle-switch" checked>
+        </label>
+        <label class="toggle-row">
+            <span class="toggle-text">다크 모드</span>
+            <input type="checkbox" id="toggle-dark" class="toggle-switch">
+        </label>
+        <label class="toggle-row">
+            <span class="toggle-text">컷 간격 제거</span>
+            <input type="checkbox" id="toggle-spacing" class="toggle-switch" checked>
+        </label>
+        <label class="toggle-row">
+            <span class="toggle-text">스크롤 가속 (Smooth)</span>
+            <input type="checkbox" id="toggle-accel" class="toggle-switch">
+        </label>
+        <label class="toggle-row">
+            <span class="toggle-text">빠른 스텝 스크롤 (Step)</span>
+            <input type="checkbox" id="toggle-step-scroll" class="toggle-switch" checked>
+        </label>
+        <div id="step-slider-container" style="display: block; padding: 8px 0; border-bottom: 1px solid #333;">
+            <div class="group-label" style="margin-top:0; margin-bottom: 4px;"><span>스텝 거리</span><span id="step-value">100px</span></div>
+            <input type="range" id="step-slider" min="50" max="500" value="100" step="50">
+        </div>
+        <label class="toggle-row" style="border-bottom: none;">
+            <span class="toggle-text">미니맵 사용 (M)</span>
+            <input type="checkbox" id="toggle-minimap" class="toggle-switch" checked>
+        </label>
             <!-- 호환성 유지용 숨김 요소 (에러 방지용) -->
             <button id="btn-capture" style="display: none;"></button>
             <button id="btn-crop-capture" style="display: none;"></button>
@@ -574,7 +624,7 @@
         <div id="viewer-container">
             <div id="message-box">
                 <div style="display:flex; flex-direction:column; gap:12px; align-items:center;">
-                    <img src="스크립트%20매니저%20BG%20(6).png" style="max-width: 150px; height: auto; margin-bottom: 20px; border-radius: 8px;" alt="Logo">
+                    <img src="logo.png" style="max-width: 150px; height: auto; margin-bottom: 20px; border-radius: 8px;" alt="Logo">
                     <button id="center-file-btn" class="action-btn btn-primary" style="width:240px; padding: 12px 20px;">
                         <svg class="icon" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                         <span>파일 열기 (이미지/ZIP 파일)</span>
