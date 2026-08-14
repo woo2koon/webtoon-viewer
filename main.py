@@ -223,6 +223,21 @@ class ViewerAPI:
             print(f"설정 저장 실패: {e}")
             return False
 
+    def open_new_window(self):
+        try:
+            import subprocess
+            if hasattr(sys, 'frozen'):
+                # PyInstaller 실행 파일 환경
+                subprocess.Popen([sys.executable])
+            else:
+                # Python 스크립트 실행 환경
+                script_path = os.path.abspath(__file__)
+                subprocess.Popen([sys.executable, script_path])
+            return True
+        except Exception as e:
+            print(f"새 창 열기 오류: {e}")
+            return False
+
     def _deep_update(self, source, overrides):
         for key, value in overrides.items():
             if isinstance(value, dict) and value and key in source and isinstance(source[key], dict):

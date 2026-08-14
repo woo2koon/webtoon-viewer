@@ -2,6 +2,13 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
+    <script>
+        try {
+            if (localStorage.getItem('webtoon_darkMode') === 'true') {
+                document.documentElement.classList.add('dark-mode');
+            }
+        } catch (e) {}
+    </script>
     <link rel="preload" href="fonts/Pretendard-Regular.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="preload" href="fonts/Pretendard-Bold.woff2" as="font" type="font/woff2" crossorigin>
     <title></title>
@@ -28,12 +35,65 @@
         }
 
         :root {
-            --bg-color: #f0f0f0;
-            --text-color: #333;
-            --panel-bg: #222; 
-            /* [수정] 눈이 편안한 차분한 파란색으로 변경 */
+            /* 라이트 모드 (기본, Dark Mode OFF) */
+            --bg-color: #cbd5e1;
+            --text-color: #1f2937;
+            --text-muted: #6b7280;
+            --viewer-bg: #e2e8f0;
+            --panel-bg: rgba(255, 255, 255, 0.62);
+            --panel-border: rgba(255, 255, 255, 0.7);
+            --panel-text: #1f2937;
+            --panel-shadow: rgba(0, 0, 0, 0.08);
+            --panel-group-label: #6b7280;
             --accent-color: #007aff; 
             --container-width: 690px;
+            --btn-secondary-bg: #cbd5e1;
+            --btn-secondary-text: #0f172a;
+            --btn-secondary-hover: #b0bec5;
+            --divider-color: rgba(0, 0, 0, 0.08);
+            --dir-box-bg: rgba(249, 250, 251, 0.60);
+            --dir-box-border: rgba(229, 231, 235, 0.7);
+            --dir-box-text: #4b5563;
+            --dropdown-bg: #ffffff;
+            --dropdown-border: #d1d5db;
+            --dropdown-text: #1f2937;
+            --context-bg: rgba(255, 255, 255, 0.94);
+            --context-border: rgba(255, 255, 255, 0.7);
+            --context-text: #1f2937;
+            --context-hover-bg: #007aff;
+            --context-hover-text: #ffffff;
+            --sidebar-bg: rgba(255, 255, 255, 0.62);
+            --sidebar-border: rgba(229, 231, 235, 0.7);
+        }
+
+        body.dark-mode {
+            /* 다크 모드 (Dark Mode ON) */
+            --bg-color: #1a1a1a;
+            --text-color: #eee;
+            --text-muted: #aaa;
+            --viewer-bg: #000000;
+            --panel-bg: rgba(25, 25, 28, 0.65);
+            --panel-border: rgba(255, 255, 255, 0.15);
+            --panel-text: #eee;
+            --panel-shadow: rgba(0, 0, 0, 0.6);
+            --panel-group-label: #aaa;
+            --btn-secondary-bg: rgba(68, 68, 68, 0.65);
+            --btn-secondary-text: #ccc;
+            --btn-secondary-hover: rgba(85, 85, 85, 0.85);
+            --divider-color: rgba(255, 255, 255, 0.1);
+            --dir-box-bg: rgba(34, 34, 34, 0.60);
+            --dir-box-border: rgba(255, 255, 255, 0.1);
+            --dir-box-text: #888888;
+            --dropdown-bg: #2a2a2a;
+            --dropdown-border: #444444;
+            --dropdown-text: #eee;
+            --context-bg: rgba(36, 36, 40, 0.94);
+            --context-border: rgba(255, 255, 255, 0.15);
+            --context-text: #ddd;
+            --context-hover-bg: #007aff;
+            --context-hover-text: #ffffff;
+            --sidebar-bg: rgba(26, 26, 26, 0.65);
+            --sidebar-border: rgba(255, 255, 255, 0.15);
         }
 
         body {
@@ -44,20 +104,48 @@
             /* hidden을 auto로 변경하여 가로 스크롤을 허용합니다 */
             overflow-x: auto; 
             scrollbar-width: thin;
+            transition: background-color 0.3s ease, color 0.3s ease;
         }
         button, input, select, textarea {
             font-family: inherit;
         }
-        body.dark-mode { --bg-color: #1a1a1a; --text-color: #eee; }
         
         /* 뷰어 컨테이너 (이음새 제거) */
         #viewer-container {
             margin: 0 auto; display: flex; flex-direction: column;
-            background-color: #000; min-height: 100vh;
+            background-color: var(--viewer-bg) !important; min-height: 100vh;
             font-size: 0; line-height: 0; 
+            transition: background-color 0.3s ease;
         }
         body.view-mode-fit #viewer-container { width: 100%; max-width: var(--container-width); }
         body.view-mode-original #viewer-container { width: fit-content; min-width: 100%; max-width: none; align-items: center; }
+
+        /* 페이지 단위 컨테이너 및 컷 간격/구분선 */
+        .webtoon-page {
+            display: flex; flex-direction: column; margin: 0; padding: 0;
+            background: transparent; flex-shrink: 0;
+        }
+        body.spacing-collapsed .webtoon-page {
+            margin-bottom: 0 !important;
+            border-bottom: none !important;
+        }
+        body:not(.spacing-collapsed) .webtoon-page {
+            margin-bottom: 20px !important;
+            position: relative !important;
+        }
+        body:not(.spacing-collapsed) .webtoon-page:not(:last-child)::after {
+            content: '';
+            position: absolute;
+            bottom: -12px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 80px;
+            height: 3px;
+            background-color: #94a3b8;
+            border-radius: 2px;
+            opacity: 0.7;
+            pointer-events: none;
+        }
 
         /* 이미지 스타일 */
         .viewer-image {
@@ -70,15 +158,15 @@
         #nav-trigger { position: fixed; top: 0; right: 0; bottom: 0; width: 20px; z-index: 300; display: none; }
         #nav-sidebar {
             position: fixed; top: 0; right: 0; bottom: 0; width: 110px;
-            background-color: #1a1a1a; border-left: 1px solid #444; z-index: 301;
-            transform: translateX(100%); transition: transform 0.3s;
+            background-color: var(--sidebar-bg); border-left: 1px solid var(--sidebar-border); z-index: 301;
+            transform: translateX(100%); transition: transform 0.3s, background-color 0.3s;
             display: flex; flex-direction: column; gap: 10px; padding: 15px 10px; box-sizing: border-box;
             overflow-y: auto;
             position: relative; /* 자식 absolute 기준이 되기 위해 명시 */
         }
         #nav-trigger:hover ~ #nav-sidebar, #nav-sidebar:hover { transform: translateX(0); }
 
-        .nav-thumb-item { position: relative; cursor: pointer; border-radius: 6px; overflow: hidden; background: #000; flex-shrink: 0; border: 1px solid #333; }
+        .nav-thumb-item { position: relative; cursor: pointer; border-radius: 6px; overflow: hidden; background: #000; flex-shrink: 0; border: 1px solid var(--panel-border); }
         .nav-thumb-item img { width: 100%; display: block; opacity: 0.7; transition: opacity 0.2s; }
         .nav-thumb-item:hover img, .nav-thumb-item.active img { opacity: 1; }
         .nav-thumb-item.active { border: 2px solid var(--accent-color); }
@@ -95,11 +183,13 @@
             top: 20px; 
             left: 23px; /* 맥 버튼 자리를 피해서 오른쪽으로 밀어줍니다 */
             z-index: 200;
-            background: var(--panel-bg); color: white; border: none; border-radius: 50%;
+            background: var(--panel-bg); color: var(--panel-text); border: 1px solid var(--panel-border); border-radius: 50%;
+            backdrop-filter: blur(16px) saturate(180%);
+            -webkit-backdrop-filter: blur(16px) saturate(180%);
             width: 50px; height: 50px; font-size: 24px; cursor: pointer;
             display: flex; align-items: center; justify-content: center;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.3); transition: transform 0.2s;
-}
+            box-shadow: 0 4px 12px var(--panel-shadow); transition: transform 0.2s, background-color 0.3s, color 0.3s, border-color 0.3s;
+        }
         #menu-btn:hover { transform: scale(1.1); }
 
         #settings-panel {
@@ -107,14 +197,17 @@
             top: 80px; 
             left: 80px; /* 버튼 라인에 맞춰서 정렬 */
             width: 240px;
-            background-color: var(--panel-bg); color: #fff; padding: 16px 20px;
+            background-color: var(--panel-bg); color: var(--panel-text); padding: 16px 20px;
+            backdrop-filter: blur(16px) saturate(180%);
+            -webkit-backdrop-filter: blur(16px) saturate(180%);
             border-radius: 12px; z-index: 199; display: none; 
-            box-shadow: 0 10px 30px rgba(0,0,0,0.6);
-            border: 1px solid #444;
+            box-shadow: 0 10px 30px var(--panel-shadow);
+            border: 1px solid var(--panel-border);
+            transition: background-color 0.3s, color 0.3s, border-color 0.3s;
         }
         #settings-panel.show { display: block; }
 
-        .panel-title { font-size: 17px; font-weight: bold; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; color: #ddd; }
+        .panel-title { font-size: 17px; font-weight: bold; margin-bottom: 12px; display: flex; align-items: center; gap: 8px; color: var(--panel-text); }
         
         .action-btn { 
             width: 100%; padding: 10px 12px; margin-bottom: 6px; 
@@ -125,16 +218,16 @@
         }
         .btn-primary { background-color: var(--accent-color); color: white; }
         .btn-primary:hover { filter: brightness(1.1); }
-        .btn-secondary { background-color: #444; color: #ccc; }
-        .btn-secondary:hover { background-color: #555; }
+        .btn-secondary { background-color: var(--btn-secondary-bg); color: var(--btn-secondary-text); border: 1px solid var(--panel-border); box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+        .btn-secondary:hover { background-color: var(--btn-secondary-hover); }
 
-        .group-label { font-size: 13px; color: #aaa; margin-top: 14px; margin-bottom: 6px; display: flex; justify-content: space-between; }
+        .group-label { font-size: 13px; color: var(--panel-group-label); margin-top: 14px; margin-bottom: 6px; display: flex; justify-content: space-between; }
         
         .toggle-row {
             display: flex; justify-content: space-between; align-items: center;
             height: 42px;
             padding: 0;
-            border-bottom: 1px solid #333;
+            border-bottom: 1px solid var(--divider-color);
             cursor: pointer;
             margin: 0;
             box-sizing: border-box;
@@ -170,13 +263,17 @@
         .size-select-btn { 
             flex: 1; 
             padding: 8px 10px; 
-            background: #333; 
-            border: 1px solid #444; 
-            color: #888; 
+            background: var(--btn-secondary-bg); 
+            border: 1px solid var(--panel-border); 
+            color: var(--btn-secondary-text); 
             border-radius: 6px; 
             cursor: pointer; 
             font-weight: bold; 
             font-size: 14px; 
+            transition: background-color 0.2s, color 0.2s, border-color 0.2s;
+        }
+        .size-select-btn:hover:not(.active) {
+            background: var(--btn-secondary-hover);
         }
         .size-select-btn.active { background: var(--accent-color); color: white; border-color: var(--accent-color); }
         
@@ -255,13 +352,30 @@
         }
         #message-box p { font-size: 16px; margin-bottom: 30px; }
         body.has-images #message-box { display: none; }
+        body.has-images #page-indicator { display: flex !important; align-items: center !important; justify-content: center !important; }
         #page-indicator { 
             position: fixed; 
-            top: 30px; 
-            left: 95px; /* 메뉴 버튼 옆으로 위치를 옮깁니다 */
-            background: rgba(0,0,0,0.6); color: white; padding: 8px 16px; 
-            border-radius: 20px; display: none; backdrop-filter: blur(2px); 
-            z-index: 100; font-weight: bold; pointer-events: none; 
+            top: 27px; 
+            left: 85px; 
+            height: 36px;
+            line-height: 34px !important;
+            width: auto;
+            min-width: 50px;
+            white-space: nowrap;
+            padding: 0 16px;
+            box-sizing: border-box;
+            background: var(--panel-bg); color: var(--panel-text); 
+            border: 1px solid var(--panel-border);
+            box-shadow: 0 4px 12px var(--panel-shadow);
+            border-radius: 18px; 
+            display: none; 
+            align-items: center !important;
+            justify-content: center !important;
+            font-size: 15px !important;
+            backdrop-filter: blur(16px) saturate(180%); 
+            -webkit-backdrop-filter: blur(16px) saturate(180%);
+            z-index: 100; font-weight: 700 !important; pointer-events: none; 
+            transition: background-color 0.3s, color 0.3s, border-color 0.3s;
         }
         
 
@@ -323,9 +437,9 @@
             user-select: none;
         }
         .dropdown-trigger {
-            background: #333;
-            color: #ccc;
-            border: 1px solid #444;
+            background: var(--dropdown-bg);
+            color: var(--dropdown-text);
+            border: 1px solid var(--dropdown-border);
             border-radius: 6px;
             padding: 5px 10px;
             font-weight: bold;
@@ -336,21 +450,21 @@
             justify-content: space-between;
             min-width: 60px;
             gap: 6px;
-            transition: border-color 0.2s, background-color 0.2s;
+            transition: border-color 0.2s, background-color 0.2s, color 0.2s;
         }
         .dropdown-trigger:hover {
             border-color: var(--accent-color);
-            background: #3c3c3c;
+            background: var(--btn-secondary-hover);
         }
         .dropdown-options {
             display: none;
             position: absolute;
             top: calc(100% + 4px);
             right: 0;
-            background: #2a2a2a;
-            border: 1px solid #444;
+            background: var(--dropdown-bg);
+            border: 1px solid var(--dropdown-border);
             border-radius: 8px;
-            box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+            box-shadow: 0 8px 24px var(--panel-shadow);
             z-index: 1000;
             overflow: hidden;
             min-width: 80px;
@@ -365,7 +479,7 @@
             cursor: pointer;
             font-size: 13px;
             font-weight: bold;
-            color: #ccc;
+            color: var(--dropdown-text);
             transition: background 0.15s, color 0.15s;
         }
         .dropdown-option:hover {
@@ -373,7 +487,7 @@
             color: #fff;
         }
         .dropdown-option.active {
-            background: rgba(0, 122, 255, 0.2);
+            background: rgba(0, 122, 255, 0.15);
             color: var(--accent-color);
         }
         .custom-dropdown.open .dropdown-options {
@@ -410,11 +524,141 @@
             to { opacity: 1; transform: translateY(0); }
         }
 
+        /* 제품 정보 모달 스타일 */
+
+        #panel-info-btn {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            padding: 4px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: color 0.2s, background-color 0.2s, transform 0.2s;
+        }
+        #panel-info-btn:hover {
+            color: var(--accent-color);
+            background-color: var(--btn-secondary-hover);
+            transform: scale(1.1);
+        }
+
+        .info-modal-backdrop {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background: rgba(0, 0, 0, 0.45);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            z-index: 100000; display: none;
+            align-items: center; justify-content: center;
+            opacity: 0; transition: opacity 0.2s ease;
+        }
+        .info-modal-backdrop.show {
+            display: flex; opacity: 1;
+        }
+
+        .info-modal-content {
+            background: #ffffff; color: #1f2937;
+            border: 1px solid #d1d5db;
+            border-radius: 16px; width: 440px; max-width: 90vw;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.25);
+            overflow: hidden;
+            transform: scale(0.95); transition: transform 0.2s ease, background-color 0.3s, color 0.3s, border-color 0.3s;
+        }
+        body.dark-mode .info-modal-content {
+            background: #1e1e22 !important;
+            color: #eee !important;
+            border: 1px solid rgba(255, 255, 255, 0.15) !important;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.7) !important;
+        }
+        .info-modal-backdrop.show .info-modal-content {
+            transform: scale(1);
+        }
+
+        .info-modal-header {
+            padding: 16px 20px; border-bottom: 1px solid var(--divider-color);
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .info-modal-title { font-size: 16px; font-weight: bold; color: var(--panel-text); }
+        .info-modal-close-x {
+            background: none; border: none; font-size: 22px; color: var(--text-muted);
+            cursor: pointer; padding: 0 4px; line-height: 1; transition: color 0.2s;
+        }
+        .info-modal-close-x:hover { color: var(--panel-text); }
+
+        .info-modal-body { padding: 24px 24px 16px 24px; }
+        
+        .info-app-hero { display: flex; align-items: center; gap: 20px; margin-bottom: 20px; }
+        .info-app-logo { width: 84px; height: 84px; object-fit: contain; border-radius: 18px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); flex-shrink: 0; }
+        .info-app-text { display: flex; flex-direction: column; gap: 3px; }
+        .info-app-title { margin: 0; font-size: 22px; font-weight: 700; color: var(--accent-color); }
+        .info-app-subtitle { margin: 0; font-size: 14px; font-weight: 600; color: var(--panel-text); }
+        .info-app-version { margin: 4px 0 0 0; font-size: 13px; color: var(--text-muted); }
+        .info-app-tech { margin: 0; font-size: 12px; color: var(--text-muted); opacity: 0.8; }
+
+        .info-license-section { margin-top: 16px; border-top: 1px solid var(--divider-color); padding-top: 16px; }
+        .info-license-heading { margin: 0 0 10px 0; font-size: 14px; font-weight: bold; color: var(--panel-text); }
+        .info-license-grid { display: flex; flex-direction: column; gap: 6px; }
+        .info-license-row { display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: var(--panel-text); }
+        .info-license-badge { font-size: 11px; padding: 2px 8px; border-radius: 4px; background: var(--btn-secondary-bg); color: var(--btn-secondary-text); font-weight: 600; }
+
+        .info-copyright { margin-top: 20px; text-align: center; font-size: 12px; color: var(--text-muted); opacity: 0.75; }
+
+        .info-modal-footer {
+            padding: 12px 20px 16px 20px; display: flex; justify-content: flex-end;
+        }
+
     </style>
 </head>
-<body class="spacing-collapsed view-mode-fit">
+<script>
+    if (document.documentElement.classList.contains('dark-mode')) {
+        document.write('<body class="spacing-collapsed view-mode-fit dark-mode no-transition">');
+    } else {
+        document.write('<body class="spacing-collapsed view-mode-fit no-transition">');
+    }
+</script>
+<noscript><body class="spacing-collapsed view-mode-fit no-transition"></noscript>
     <!-- 폰트 미리 로드 (메뉴 최초 오픈 시 글꼴 깜빡임/크기 변화 방지) -->
     <div style="font-family: 'Pretendard'; font-weight: bold; position: absolute; visibility: hidden; pointer-events: none;">preload</div>
+    
+    <!-- 제품 정보 모달 -->
+    <div id="info-modal-backdrop" class="info-modal-backdrop">
+        <div id="info-modal" class="info-modal-content">
+            <div class="info-modal-header">
+                <span class="info-modal-title">제품 정보</span>
+                <button id="info-modal-close-x" class="info-modal-close-x">&times;</button>
+            </div>
+            <div class="info-modal-body">
+                <div class="info-app-hero">
+                    <img src="logo.png" alt="Logo" class="info-app-logo" onerror="this.style.display='none'">
+                    <div class="info-app-text">
+                        <h2 class="info-app-title">Webtoon Viewer Pro</h2>
+                        <p class="info-app-subtitle">스마트 웹툰 & 이미지 뷰어</p>
+                        <p class="info-app-version">Version 3.0.0</p>
+                        <p class="info-app-tech">Python 3.12 + pywebview + Bottle + Canvas</p>
+                    </div>
+                </div>
+
+                <div class="info-license-section">
+                    <h3 class="info-license-heading">오픈소스 라이선스</h3>
+                    <div class="info-license-grid">
+                        <div class="info-license-row"><span>pywebview</span><span class="info-license-badge">BSD-3-Clause</span></div>
+                        <div class="info-license-row"><span>Bottle</span><span class="info-license-badge">MIT</span></div>
+                        <div class="info-license-row"><span>PyInstaller</span><span class="info-license-badge">GPLv2</span></div>
+                        <div class="info-license-row"><span>Pretendard Font</span><span class="info-license-badge">OFL-1.1</span></div>
+                        <div class="info-license-row"><span>html2canvas</span><span class="info-license-badge">MIT</span></div>
+                        <div class="info-license-row"><span>JSZip</span><span class="info-license-badge">MIT</span></div>
+                    </div>
+                </div>
+                <div class="info-copyright">
+                    © 2026 PAK JINWOO. All rights reserved.
+                </div>
+            </div>
+            <div class="info-modal-footer">
+                <button id="info-modal-close-btn" class="action-btn btn-primary" style="width: 100px;">닫기</button>
+            </div>
+        </div>
+    </div>
     
     <!-- 로딩 오버레이 제거됨 -->
 
@@ -461,50 +705,55 @@
     <!-- 커스텀 우클릭 컨텍스트 메뉴 -->
     <div id="context-menu" class="custom-context-menu" style="display: none;">
         <div class="context-item has-submenu" id="ctx-open-submenu">
-            <svg class="icon" viewBox="0 0 24 24"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z"/></svg>
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
             <span id="ctx-open-submenu-label">이미지 열기</span>
             <span class="ctx-arrow">▶</span>
             <div class="context-submenu">
                 <div class="context-item" id="ctx-open-file">
-                    <svg class="icon" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/><circle cx="10" cy="12" r="2"/><path d="m20 17-1.296-1.296a2.41 2.41 0 0 0-3.408 0L9 22"/></svg>
                     <span>파일 열기</span>
                 </div>
                 <div class="context-item" id="ctx-open-folder">
-                    <svg class="icon" viewBox="0 0 24 24"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                    <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg>
                     <span>폴더 열기</span>
                 </div>
             </div>
         </div>
         <div class="context-item" id="ctx-open-location">
-            <svg class="icon" viewBox="0 0 24 24"><path d="M20 6h-8l-2-2H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2zm-5 3c1.66 0 3 1.34 3 3 0 1.55-1.18 2.82-2.7 2.97l.7 2.03h-1.02l-.65-1.9c-.11.01-.22.02-.33.02-1.66 0-3-1.34-3-3 0-1.66 1.34-3 3-3zm0 2c-.55 0-1 .45-1 1s.45 1 1 1 1-.45 1-1-.45-1-1-1z"/></svg>
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.7 20H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H20a2 2 0 0 1 2 2v4.1"/><path d="m21 21-1.9-1.9"/><circle cx="17" cy="17" r="3"/></svg>
             <span>파일 위치 열기</span>
         </div>
         <div class="context-divider"></div>
         <div class="context-item" id="ctx-toggle-compare">
-            <svg class="icon" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/></svg>
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><path d="M11 18H8a2 2 0 0 1-2-2V9"/></svg>
             <span>비교보기 모드</span>
             <span class="ctx-shortcut" id="ctx-compare-status">Off</span>
         </div>
         <div class="context-item" id="ctx-toggle-sync">
-            <svg class="icon" viewBox="0 0 24 24"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/></svg>
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/></svg>
             <span>스크롤 동기화</span>
             <span class="ctx-shortcut" id="ctx-sync-status">Off</span>
         </div>
         <div class="context-divider"></div>
         <div class="context-item" id="ctx-capture-screen">
-            <svg class="icon" viewBox="0 0 24 24"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
             <span>현재 화면 캡처</span>
             <span class="ctx-shortcut">Alt+C</span>
         </div>
         <div class="context-item" id="ctx-capture-crop">
-            <svg class="icon" viewBox="0 0 24 24"><path d="M17 15h2V7c0-1.1-.9-2-2-2H9v2h8v8zM7 17V1H5v4H1v2h4v10c0 1.1.9 2 2 2h10v4h2v-4h4v-2H7z"/></svg>
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></svg>
             <span>영역 지정 캡처</span>
             <span class="ctx-shortcut">Alt+X</span>
         </div>
         <div class="context-divider"></div>
         <div class="context-item" id="ctx-open-menu">
-            <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/></svg>
             <span>상세 설정 열기</span>
+        </div>
+        <div class="context-divider"></div>
+        <div class="context-item" id="ctx-new-window">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
+            <span>새 창 열기</span>
         </div>
     </div>
 
@@ -517,9 +766,18 @@
     <div id="page-indicator">0 / 0</div>
 
     <div id="settings-panel">
-        <div class="panel-title">
-            <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-            <span>메뉴</span>
+        <div class="panel-title" style="justify-content: space-between;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+                <svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                <span>메뉴</span>
+            </div>
+            <button id="panel-info-btn" title="제품 정보">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="12" y1="16" x2="12" y2="12"></line>
+                    <line x1="12" y1="8" x2="12.01" y2="8"></line>
+                </svg>
+            </button>
         </div>
         
         <button id="menu-file-btn" class="action-btn btn-primary">
@@ -572,7 +830,7 @@
                         </div>
                         <button id="btn-reset-capture-dir" class="action-btn" style="width: auto; padding: 3px 8px; margin: 0; font-size: 11px; height: auto; background: #dc3545; color: #fff; border: 1px solid #b02a37; border-radius: 4px; cursor: pointer;">초기화</button>
                     </div>
-                    <div id="capture-dir-value" style="font-size: 11px; color: #888; text-align: left; word-break: break-all; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 6px 8px; background: #222; border-radius: 4px; border: 1px solid #333;" title="기본 사진 저장 폴더">기본 (사진/Webtoon capture)</div>
+                    <div id="capture-dir-value" style="font-size: 11px; color: var(--dir-box-text); text-align: left; word-break: break-all; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding: 6px 8px; background: var(--dir-box-bg); border-radius: 4px; border: 1px solid var(--dir-box-border);" title="기본 사진 저장 폴더">기본 (사진/Webtoon capture)</div>
                 </div>
             </div>
         </div>
@@ -597,7 +855,7 @@
             <span class="toggle-text">빠른 스텝 스크롤 (Step)</span>
             <input type="checkbox" id="toggle-step-scroll" class="toggle-switch" checked>
         </label>
-        <div id="step-slider-container" style="display: block; padding: 8px 0; border-bottom: 1px solid #333;">
+        <div id="step-slider-container" style="display: block; padding: 8px 0; border-bottom: 1px solid var(--divider-color);">
             <div class="group-label" style="margin-top:0; margin-bottom: 4px;"><span>스텝 거리</span><span id="step-value">100px</span></div>
             <input type="range" id="step-slider" min="50" max="500" value="100" step="50">
         </div>
@@ -639,7 +897,7 @@
         <div id="viewer-container-right" style="display: none;">
             <div id="message-box-right" class="message-box-compare">
                 <div style="display:flex; flex-direction:column; gap:12px; align-items:center;">
-                    <h3 style="color:#eee; margin-bottom:10px;">비교 대상 웹툰 로드</h3>
+                    <h3 style="color:var(--text-color); margin-bottom:10px;">비교 대상 웹툰 로드</h3>
                     <button id="right-file-btn" class="action-btn btn-primary" style="width:200px; padding: 10px 16px;">
                         <svg class="icon" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                         <span>파일 열기 (오른쪽)</span>
@@ -653,6 +911,6 @@
         </div>
     </div>
     
-    <script src="viewer.js?v=2.2"></script>
+    <script src="viewer.js?v=3.0.1"></script>
 </body>
 </html>

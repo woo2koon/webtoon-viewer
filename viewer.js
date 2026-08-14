@@ -15,8 +15,8 @@ stylePatch.innerHTML = `
         flex-wrap: nowrap !important;
         height: 100vh !important;
         padding-bottom: 50px !important;
-        background: #1a1a1a !important;
-        border-left: 1px solid #333 !important;
+        background: var(--sidebar-bg) !important;
+        border-left: 1px solid var(--sidebar-border) !important;
         position: fixed; top: 0; right: 0; width: 100px; z-index: 301;
         transform: translateX(100%); transition: transform 0.3s;
         
@@ -189,20 +189,22 @@ stylePatch.innerHTML = `
     body.compare-mode.minimap-pinned #split-wrapper {
         width: calc(100vw - 100px) !important;
     }
-    body.compare-mode #viewer-container,
-    body.compare-mode #viewer-container-right {
+    body.compare-mode #split-wrapper #viewer-container,
+    body.compare-mode #split-wrapper #viewer-container-right,
+    body.compare-mode.has-images #split-wrapper #viewer-container,
+    body.compare-mode.has-images #split-wrapper #viewer-container-right {
         flex: 1 !important;
         height: 100% !important;
         overflow-y: scroll !important;
         overflow-x: auto !important;
         position: relative !important;
-        background-color: #000 !important;
+        background-color: var(--bg-color) !important; /* 다크모드 시 까만색(#000000)으로 덮이는 현상 방지 및 다크 차콜(#1a1a1a) 통일 */
         box-sizing: border-box !important;
         min-height: 100vh !important;
         max-width: none !important; /* 비교모드 시 50% 분할 공간을 꽉 채우도록 제한 해제 */
     }
     body.compare-mode #viewer-container {
-        border-right: 2px solid #333 !important;
+        border-right: 2px solid var(--divider-color) !important;
     }
     
     body.compare-mode.view-mode-fit #viewer-container,
@@ -211,10 +213,15 @@ stylePatch.innerHTML = `
         flex-direction: column !important;
         align-items: center !important;
     }
+    body.compare-mode .webtoon-page {
+        background-color: var(--viewer-bg) !important; /* 이미지 안쪽 영역 캔버스 배경 */
+        box-shadow: none !important; /* 그림자 완전 제거 */
+    }
     body.compare-mode.view-mode-fit #viewer-container .webtoon-page,
     body.compare-mode.view-mode-fit #viewer-container-right .webtoon-page {
         width: 100% !important;
         max-width: var(--container-width) !important;
+        margin: 0 auto !important;
     }
     body.compare-mode.view-mode-fit .viewer-image {
         width: 100% !important;
@@ -232,16 +239,29 @@ stylePatch.innerHTML = `
         height: auto !important;
     }
 
-    .message-box-compare {
+    /* 비교모드 수직 칼럼 래퍼 및 안내 메시지 레이아웃 (단일 모드와 100% 동일하게 위아래로 길게 이어진 캔버스 칼럼) */
+    body.compare-mode #message-box,
+    body.compare-mode #message-box-right,
+    body.compare-mode .message-box-compare {
         position: absolute !important;
-        top: 50% !important;
+        top: 0 !important;
         left: 50% !important;
-        transform: translate(-50%, -50%) !important;
-        text-align: center !important;
-        color: #888 !important;
-        width: calc(100% - 40px) !important;
-        max-width: 300px !important;
+        transform: translateX(-50%) !important;
+        width: 100% !important;
+        max-width: var(--container-width) !important;
+        min-height: 100vh !important;
+        background-color: var(--viewer-bg) !important;
+        box-shadow: none !important;
         box-sizing: border-box !important;
+        margin: 0 !important;
+        padding: 40px 20px !important;
+        border-radius: 0 !important;
+        border: none !important;
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: center !important;
+        justify-content: center !important;
+        color: var(--text-color) !important;
     }
 
     #viewer-container {
@@ -250,16 +270,19 @@ stylePatch.innerHTML = `
         display: flex;
         flex-direction: column;
         
-        /* 초기 상태: 검은 배경 */
-        background-color: #000 !important;
+        /* 테마별 배경 적용 (그림자 및 테두리 없이 깔끔하게 밀착) */
+        background-color: var(--viewer-bg) !important;
+        box-shadow: none !important;
+        border: none !important;
         min-height: 100vh !important;
         margin: 0 auto !important; /* 가로 맞춤 시 중앙 배치 */
         position: relative !important; /* [추가] 정밀한 위치 계산을 위한 기준점 */
+        transition: background-color 0.3s ease !important;
     }
 
     /* 로딩 완료 후 배경 처리 */
     body.has-images #viewer-container {
-        background-color: transparent !important;
+        background-color: var(--viewer-bg) !important;
     }
 
     /* 안내 메시지 스타일 (유지) */
@@ -299,12 +322,20 @@ stylePatch.innerHTML = `
         height: auto !important;
     }
 
-    /* [원본 크기] 이미지 실제 픽셀 크기 고정 */
+    /* [원본 크기] 이미지 실제 픽셀 크기 고정 및 외곽/내부 배경 구분 */
     body:not(.compare-mode).view-mode-original #viewer-container {
-        width: fit-content !important;
+        width: 100% !important;
         max-width: none !important;
         min-width: 100% !important;
         align-items: center !important;
+        background-color: var(--bg-color) !important; /* 외곽 바탕은 슬레이트 그레이로 지정하여 명확한 구분 형성 */
+        border: none !important;
+    }
+    body:not(.compare-mode).view-mode-original .webtoon-page {
+        background-color: var(--viewer-bg) !important; /* 이미지가 있는 캔버스 칼럼 영역만 순백색 적용 */
+        width: fit-content !important;
+        max-width: none !important;
+        border: none !important;
     }
     body:not(.compare-mode).view-mode-original .viewer-image {
         width: auto !important;
@@ -328,44 +359,62 @@ stylePatch.innerHTML = `
         max-width: none !important;
     }
 
-    body.spacing-collapsed .webtoon-page { margin-bottom: 0 !important; }
-    body:not(.spacing-collapsed) .webtoon-page { margin-bottom: 20px !important; }
-
-    /* (A) 간격 옵션 켜짐 (기본): 파일 간에도 딱 붙임 */
+    /* (A) 간격 제거 켜짐: 파일 간 0px 완벽 밀착 (파란색 선 제거) */
     body.spacing-collapsed .webtoon-page {
         margin-bottom: 0 !important;
+        border-bottom: none !important;
     }
 
-    /* (B) 간격 옵션 꺼짐: 파일 사이에만 20px 띄움 */
+    /* (B) 간격 제거 꺼짐: 파일 사이에 20px 띄우고 슬레이트 구분 바탕 및 포커스 디바이더 라인 표시 */
     body:not(.spacing-collapsed) .webtoon-page {
         margin-bottom: 20px !important;
+        position: relative !important;
+    }
+    body:not(.spacing-collapsed) .webtoon-page:not(:last-child)::after {
+        content: '' !important;
+        position: absolute !important;
+        bottom: -12px !important;
+        left: 50% !important;
+        transform: translateX(-50%) !important;
+        width: 80px !important;
+        height: 3px !important;
+        background-color: #94a3b8 !important;
+        border-radius: 2px !important;
+        opacity: 0.7 !important;
+        pointer-events: none !important;
     }
 
     /* 5. 설정창 디자인 */
     #settings-panel {
-        background-color: #222 !important;
-        border: 1px solid #444 !important;
-        box-shadow: 0 10px 30px rgba(0,0,0,0.5) !important;
+        background-color: var(--panel-bg) !important;
+        backdrop-filter: blur(16px) saturate(180%) !important;
+        -webkit-backdrop-filter: blur(16px) saturate(180%) !important;
+        border: 1px solid var(--panel-border) !important;
+        box-shadow: 0 10px 30px var(--panel-shadow) !important;
         border-radius: 12px !important;
         padding: 16px 20px !important;
         width: 240px !important;
-        color: #eee !important;
+        color: var(--panel-text) !important;
         position: fixed; top: 80px; left: 20px; z-index: 199; display: none;
+        transition: background-color 0.3s, color 0.3s, border-color 0.3s;
     }
     #settings-panel.show { display: block; }
     .panel-header, .group-title {
-        color: #aaa !important;
+        color: var(--panel-group-label) !important;
         font-size: 13px !important;
         font-weight: bold !important;
         margin-bottom: 6px !important;
     }
     .btn-row { display: flex; gap: 8px; margin-bottom: 10px; }
-    .size-btn {
+    .size-btn, .size-select-btn {
         flex: 1; padding: 8px 0 !important; border-radius: 6px !important;
-        border: none !important; background: #444 !important; color: #ccc !important;
+        border: 1px solid var(--panel-border) !important; background: var(--btn-secondary-bg) !important; color: var(--btn-secondary-text) !important;
         font-weight: bold !important; cursor: pointer; transition: 0.2s;
     }
-    .size-btn.active { background: #007aff !important; color: #fff !important; }
+    .size-btn:hover:not(.active), .size-select-btn:hover:not(.active) {
+        background: var(--btn-secondary-hover) !important;
+    }
+    .size-btn.active, .size-select-btn.active { background: #007aff !important; color: #fff !important; border-color: #007aff !important; }
     input[type=range] {
         width: 100% !important;
         margin: 8px 0 0 0 !important;
@@ -380,7 +429,7 @@ stylePatch.innerHTML = `
         width: 100% !important;
         margin-top: 6px !important;
         font-size: 11px !important;
-        color: #888 !important;
+        color: var(--panel-group-label) !important;
         font-weight: bold !important;
         padding: 0 !important;
         box-sizing: border-box !important;
@@ -421,7 +470,7 @@ stylePatch.innerHTML = `
         height: 42px !important;
         padding: 0 !important;
         margin: 0 !important;
-        border-bottom: 1px solid #333 !important;
+        border-bottom: 1px solid var(--divider-color) !important;
         box-sizing: border-box !important;
     }
     #settings-panel label.toggle-row:last-of-type,
@@ -464,14 +513,14 @@ stylePatch.innerHTML = `
     }
 
     /* 7. 아이콘 공통 스타일 */
-    .icon {
+    .icon, .icon * {
         width: 18px;
         height: 18px;
-        stroke: currentColor;
-        stroke-width: 2;
-        stroke-linecap: round;
-        stroke-linejoin: round;
-        fill: none;
+        stroke: currentColor !important;
+        stroke-width: 2 !important;
+        stroke-linecap: round !important;
+        stroke-linejoin: round !important;
+        fill: none !important;
         vertical-align: middle;
         flex-shrink: 0;
         display: inline-block;
@@ -502,18 +551,27 @@ stylePatch.innerHTML = `
     body.selecting.minimap-pinned #nav-sidebar {
         pointer-events: none !important; /* 캡처 드래그 중 오동작 방지 */
     }
-    /* 영역 지정 캡처 시 각 뷰어 안의 이미지 크기 축소로 여백 확보 및 스크롤바 위치 고정 (ID 선택자로 우선순위 보장) */
-    body.selecting.view-mode-fit #viewer-container .viewer-image,
-    body.selecting.view-mode-fit #viewer-container-right .viewer-image,
-    body.selecting.view-mode-original #viewer-container .viewer-image,
-    body.selecting.view-mode-original #viewer-container-right .viewer-image,
-    body.selecting.compare-mode.view-mode-fit #viewer-container .viewer-image,
-    body.selecting.compare-mode.view-mode-fit #viewer-container-right .viewer-image,
-    body.selecting.compare-mode.view-mode-original #viewer-container .viewer-image,
-    body.selecting.compare-mode.view-mode-original #viewer-container-right .viewer-image {
+    /* 영역 지정 캡처 시 레이아웃 축소 처리 */
+    /* 1) 일반 단일 모드: 컨테이너와 배경이 이미지와 함께 60px 축소 */
+    body:not(.compare-mode).selecting #viewer-container {
         max-width: calc(var(--container-width) - 60px) !important;
         width: calc(100% - 60px) !important;
     }
+
+    /* 2) 비교 모드: 50/50 분할 레이아웃 유지를 위해 좌/우 각 컨테이너 내부 이미지 표시 영역(.webtoon-page)과 캔버스 배경이 함께 60px 축소 */
+    body.compare-mode.selecting #viewer-container .webtoon-page,
+    body.compare-mode.selecting #viewer-container-right .webtoon-page {
+        max-width: calc(var(--container-width) - 60px) !important;
+        width: calc(100% - 60px) !important;
+        margin: 0 auto !important;
+    }
+
+    body.selecting #viewer-container,
+    body.selecting-transition #viewer-container,
+    body.selecting #viewer-container-right,
+    body.selecting-transition #viewer-container-right,
+    body.selecting .webtoon-page,
+    body.selecting-transition .webtoon-page,
     body.selecting .viewer-image,
     body.selecting-transition .viewer-image,
     body.selecting .image-wrapper,
@@ -524,19 +582,20 @@ stylePatch.innerHTML = `
     /* 커스텀 컨텍스트 메뉴 스타일 */
     .custom-context-menu {
         position: fixed !important;
-        background: rgba(30, 30, 30, 0.95) !important;
+        background: var(--context-bg) !important;
         backdrop-filter: blur(12px) !important;
         -webkit-backdrop-filter: blur(12px) !important;
-        border: 1px solid rgba(255, 255, 255, 0.08) !important;
+        border: 1px solid var(--context-border) !important;
         border-radius: 8px !important;
         padding: 6px 0 !important;
         width: 190px !important;
-        box-shadow: 0 10px 25px rgba(0,0,0,0.5) !important;
+        box-shadow: 0 10px 25px var(--panel-shadow) !important;
         z-index: 99999 !important;
-        color: #ddd !important;
+        color: var(--context-text) !important;
         font-family: 'Pretendard', sans-serif !important;
         font-size: 13px !important;
         user-select: none !important;
+        transition: background 0.3s, color 0.3s, border-color 0.3s;
     }
     .context-item {
         display: flex !important;
@@ -546,8 +605,8 @@ stylePatch.innerHTML = `
         transition: background 0.15s, color 0.15s !important;
     }
     .context-item:hover {
-        background: #007aff !important;
-        color: #fff !important;
+        background: var(--context-hover-bg) !important;
+        color: var(--context-hover-text) !important;
     }
     .context-item.disabled {
         opacity: 0.3 !important;
@@ -563,14 +622,14 @@ stylePatch.innerHTML = `
     .context-item .ctx-shortcut {
         margin-left: auto !important;
         font-size: 11px !important;
-        color: #888;
+        color: var(--panel-group-label);
     }
     .context-item:hover .ctx-shortcut {
         color: rgba(255, 255, 255, 0.8) !important;
     }
     .context-divider {
         height: 1px !important;
-        background: rgba(255, 255, 255, 0.08) !important;
+        background: var(--divider-color) !important;
         margin: 4px 0 !important;
     }
 
@@ -582,16 +641,18 @@ stylePatch.innerHTML = `
         position: absolute !important;
         top: -6px !important;
         left: 98% !important;
-        background: rgba(30, 30, 30, 0.95) !important;
-        backdrop-filter: blur(12px) !important;
-        -webkit-backdrop-filter: blur(12px) !important;
-        border: 1px solid rgba(255, 255, 255, 0.08) !important;
+        background: var(--context-bg) !important;
+        backdrop-filter: blur(16px) saturate(180%) !important;
+        -webkit-backdrop-filter: blur(16px) saturate(180%) !important;
+        border: 1px solid var(--context-border) !important;
         border-radius: 8px !important;
         padding: 6px 0 !important;
         width: 140px !important;
-        box-shadow: 0 10px 25px rgba(0,0,0,0.5) !important;
+        box-shadow: 0 10px 25px var(--panel-shadow) !important;
         display: none !important;
         z-index: 100000 !important;
+        color: var(--context-text) !important;
+        transition: background 0.3s, color 0.3s, border-color 0.3s !important;
     }
     .context-item.has-submenu:hover .context-submenu {
         display: block !important;
@@ -599,10 +660,10 @@ stylePatch.innerHTML = `
     .context-item .ctx-arrow {
         margin-left: auto !important;
         font-size: 9px !important;
-        color: #666 !important;
+        color: var(--panel-group-label) !important;
     }
     .context-item:hover .ctx-arrow {
-        color: #fff !important;
+        color: var(--context-hover-text) !important;
     }
 
 
@@ -943,6 +1004,7 @@ async function loadSettings() {
     // 1. 다크 모드
     const isDark = app.darkMode === true;
     body.classList.toggle('dark-mode', isDark);
+    try { localStorage.setItem('webtoon_darkMode', isDark ? 'true' : 'false'); } catch (e) {}
     const darkToggle = document.getElementById('toggle-dark');
     if (darkToggle) darkToggle.checked = isDark;
     
@@ -1017,6 +1079,11 @@ async function loadSettings() {
         captureDirValue.textContent = captureDir || "기본 (사진/Webtoon capture)";
         captureDirValue.title = captureDir || "기본 사진 저장 폴더";
     }
+
+    // 초기 설정 로드 완료 후 트랜지션 다시 활성화 (시작 시 스르륵 전환 깜빡임 방지)
+    setTimeout(() => {
+        body.classList.remove('no-transition');
+    }, 150);
 }
 
 
@@ -1048,7 +1115,22 @@ function restoreSliderLabels() {
 //  [통합] 파일/폴더 열기 및 윈도우 보안 우회 경로 처리
 // ============================================================
 
-// 1. 버튼 바인딩 헬퍼 함수
+// 1. 직접 다이얼로그 호출 및 렌더링 통합 함수
+async function triggerOpenDialog(type, side = 'left') {
+    if (window.pywebview && window.pywebview.api) {
+        const result = (type === 'folder') 
+            ? await window.pywebview.api.open_folder_dialog() 
+            : await window.pywebview.api.open_file_dialog();
+        if (result) {
+            tLog(`📂 경로 선택 완료: ${result.folderPath} (영역: ${side})`);
+            finalizePathAndRender(result, side);
+        }
+    } else {
+        tLog("⚠️ pywebview API를 찾을 수 없습니다.");
+    }
+}
+
+// 2. 버튼 바인딩 헬퍼 함수
 function bindButton(id, type, side) {
     const btn = document.getElementById(id);
     if (btn) {
@@ -1056,17 +1138,7 @@ function bindButton(id, type, side) {
             tLog(`🔘 버튼 클릭됨: ${id} (영역: ${side})`);
             e.preventDefault();
             e.stopImmediatePropagation();
-            if (window.pywebview && window.pywebview.api) {
-                const result = (type === 'folder') 
-                    ? await window.pywebview.api.open_folder_dialog() 
-                    : await window.pywebview.api.open_file_dialog();
-                if (result) {
-                    tLog(`📂 경로 선택 완료: ${result.folderPath}`);
-                    finalizePathAndRender(result, side);
-                }
-            } else {
-                tLog("⚠️ pywebview API를 찾을 수 없습니다.");
-            }
+            await triggerOpenDialog(type, side);
         };
     }
 }
@@ -1094,7 +1166,7 @@ function resetRightPane() {
         containerRight.innerHTML = `
             <div id="message-box-right" class="message-box-compare">
                 <div style="display:flex; flex-direction:column; gap:12px; align-items:center;">
-                    <h3 style="color:#eee; margin-bottom:10px;">비교 대상 웹툰 로드</h3>
+                    <h3 style="color:var(--text-color); margin-bottom:10px;">비교 대상 웹툰 로드</h3>
                     <button id="right-file-btn" class="action-btn btn-primary" style="width:200px; padding: 10px 16px;">
                         <svg class="icon" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                         <span>파일 열기 (오른쪽)</span>
@@ -1151,7 +1223,7 @@ async function processPythonFiles(fileObjects, folderPath, side = 'left') {
         if (navSidebar) navSidebar.innerHTML = ''; 
         currentFileKey = folderPath; 
         totalFiles = fileObjects.length;
-        resetRightPane(); // 새로운 원본 로드 시 우측 분할 화면도 초기 상태로 리셋
+        // 비교모드 시 좌측 웹툰을 새로 열더라도 우측 비교 대상은 유지되도록 resetRightPane() 자동 초기화를 제거합니다.
     } else {
         rightCurrentFileKey = folderPath;
         rightTotalFiles = fileObjects.length;
@@ -1317,7 +1389,7 @@ async function startProcess(files, side = 'left') {
         if (navSidebar) navSidebar.innerHTML = '';
         createdUrls.forEach(url => URL.revokeObjectURL(url));
         createdUrls = [];
-        resetRightPane(); // 새로운 원본 로드 시 우측 분할 화면도 초기 상태로 리셋
+        // 비교모드 드래그 앤 드롭 시 우측 비교 화면 내용 보존
     } else {
         rightCreatedUrls.forEach(url => URL.revokeObjectURL(url));
         rightCreatedUrls = [];
@@ -1631,8 +1703,10 @@ document.getElementById('toggle-resume').onchange = (e) => {
     window.pywebview.api.save_settings({ app: { resumeEnabled: isResumeEnabled } });
 };
 document.getElementById('toggle-dark').onchange = (e) => {
-    body.classList.toggle('dark-mode', e.target.checked);
-    window.pywebview.api.save_settings({ app: { darkMode: e.target.checked } });
+    const isDark = e.target.checked;
+    body.classList.toggle('dark-mode', isDark);
+    try { localStorage.setItem('webtoon_darkMode', isDark ? 'true' : 'false'); } catch (err) {}
+    window.pywebview.api.save_settings({ app: { darkMode: isDark } });
 };
 document.getElementById('toggle-spacing').onchange = (e) => {
     body.classList.toggle('spacing-collapsed', e.target.checked);
@@ -2213,11 +2287,18 @@ function showToast(message, iconKey = "check") {
 //  7. 스크롤 가속 엔진 (Smooth Scroll Engine)
 // ============================================================
 
+let lastActiveComparePane = null;
+
 function updateScroll() {
     if (isAccelEnabled) {
         // 1. 수직 스크롤 처리
         if (Math.abs(scrollVelocityY) > 0.1) {
-            window.scrollBy(0, scrollVelocityY);
+            if (isCompareMode) {
+                const targetPane = lastActiveComparePane || container;
+                if (targetPane) targetPane.scrollTop += scrollVelocityY;
+            } else {
+                window.scrollBy(0, scrollVelocityY);
+            }
             scrollVelocityY *= friction;
         } else {
             scrollVelocityY = 0;
@@ -2225,7 +2306,12 @@ function updateScroll() {
 
         // 2. 수평 스크롤 처리 (Shift + 휠 대응)
         if (Math.abs(scrollVelocityX) > 0.1) {
-            window.scrollBy(scrollVelocityX, 0);
+            if (isCompareMode) {
+                const targetPane = lastActiveComparePane || container;
+                if (targetPane) targetPane.scrollLeft += scrollVelocityX;
+            } else {
+                window.scrollBy(scrollVelocityX, 0);
+            }
             scrollVelocityX *= friction;
         } else {
             scrollVelocityX = 0;
@@ -2259,8 +2345,25 @@ window.addEventListener('wheel', (e) => {
     if (isCompareMode) {
         e.preventDefault();
         const activePane = (e.clientX > window.innerWidth / 2) ? containerRight : container;
-        const delta = isStepScrollEnabled ? (e.deltaY > 0 ? 1 : -1) * stepAmount : e.deltaY;
-        activePane.scrollTop += delta;
+        lastActiveComparePane = activePane;
+
+        if (isStepScrollEnabled) {
+            const direction = e.deltaY > 0 ? 1 : -1;
+            activePane.scrollTop += direction * stepAmount;
+            return;
+        }
+
+        if (isAccelEnabled) {
+            if (e.shiftKey || Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+                scrollVelocityX += (e.deltaX || e.deltaY) * accelFactor;
+            } else {
+                scrollVelocityY += e.deltaY * accelFactor;
+            }
+            return;
+        }
+
+        // 일반 휠 스크롤 (가속/스텝 둘 다 꺼짐)
+        activePane.scrollTop += e.deltaY;
         return;
     }
 
@@ -2930,6 +3033,7 @@ function setCompareMode(enabled) {
         body.style.overflow = 'hidden';
     } else {
         body.style.removeProperty('overflow');
+        // 비교모드를 껐다 켜더라도 프로그램 종료 전까지는 우측 웹툰 내용이 세션 동안 그대로 보존됩니다.
     }
     
     // 3. 레이아웃 변화가 완료된 후 새 스크롤 컨텍스트로 앵커 위치 복원
@@ -3167,25 +3271,13 @@ document.getElementById('ctx-toggle-sync').onclick = (e) => {
 document.getElementById('ctx-open-file').onclick = (e) => {
     e.stopPropagation();
     contextMenu.style.display = 'none';
-    if (currentSideContext === 'right') {
-        const target = document.getElementById('right-file-btn');
-        if (target) target.click();
-    } else {
-        const target = document.getElementById('menu-file-btn');
-        if (target) target.click();
-    }
+    triggerOpenDialog('file', currentSideContext);
 };
 
 document.getElementById('ctx-open-folder').onclick = (e) => {
     e.stopPropagation();
     contextMenu.style.display = 'none';
-    if (currentSideContext === 'right') {
-        const target = document.getElementById('right-folder-btn');
-        if (target) target.click();
-    } else {
-        const target = document.getElementById('menu-folder-btn');
-        if (target) target.click();
-    }
+    triggerOpenDialog('folder', currentSideContext);
 };
 
 document.getElementById('ctx-open-location').onclick = (e) => {
@@ -3220,3 +3312,43 @@ document.getElementById('ctx-open-menu').onclick = (e) => {
     contextMenu.style.display = 'none';
     settingsPanel.classList.add('show');
 };
+
+const ctxNewWindow = document.getElementById('ctx-new-window');
+if (ctxNewWindow) {
+    ctxNewWindow.onclick = (e) => {
+        e.stopPropagation();
+        contextMenu.style.display = 'none';
+        if (window.pywebview && window.pywebview.api) {
+            window.pywebview.api.open_new_window();
+        }
+    };
+}
+
+// 제품 정보 모달 제어
+const infoBtn = document.getElementById('info-btn');
+const infoModalBackdrop = document.getElementById('info-modal-backdrop');
+const infoModalCloseBtn = document.getElementById('info-modal-close-btn');
+const infoModalCloseX = document.getElementById('info-modal-close-x');
+
+function openInfoModal() {
+    if (infoModalBackdrop) infoModalBackdrop.classList.add('show');
+}
+function closeInfoModal() {
+    if (infoModalBackdrop) infoModalBackdrop.classList.remove('show');
+}
+
+const panelInfoBtn = document.getElementById('panel-info-btn');
+if (infoBtn) infoBtn.onclick = openInfoModal;
+if (panelInfoBtn) panelInfoBtn.onclick = openInfoModal;
+if (infoModalCloseBtn) infoModalCloseBtn.onclick = closeInfoModal;
+if (infoModalCloseX) infoModalCloseX.onclick = closeInfoModal;
+if (infoModalBackdrop) {
+    infoModalBackdrop.onclick = (e) => {
+        if (e.target === infoModalBackdrop) closeInfoModal();
+    };
+}
+window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && infoModalBackdrop && infoModalBackdrop.classList.contains('show')) {
+        closeInfoModal();
+    }
+});
