@@ -691,6 +691,7 @@ const ICON_MAP = {
 let isMinimapEnabled = true; // 여기에 한 번만 선언합니다.
 let isMinimapPinned = false; // 미니맵 고정(Lock) 여부
 let isMinimapPageScrollEnabled = true; // 미니맵 페이지 넘김(Page Turn) 연동 여부
+let isHoveringSidebar = false; // 사이드바 마우스 호버 여부
 
 // [추가] 순차적 백그라운드 사전 로드(Queue Preloader)를 위한 전역 제어 변수 및 헬퍼 함수
 const preloadQueue = []; // { index, file, wrapper, img, thumbImg } 로딩 대기 큐
@@ -3151,6 +3152,11 @@ function setScrollSync(enabled) {
     updateCtxMenuUI();
 }
 
+window.setCompareMode = setCompareMode;
+window.setScrollSync = setScrollSync;
+window.triggerOpenDialog = triggerOpenDialog;
+
+
 async function tLog(msg) {
     console.log(msg);
     if (window.pywebview && window.pywebview.api && window.pywebview.api.debug_log) {
@@ -3294,21 +3300,39 @@ window.addEventListener('contextmenu', (e) => {
         }
     }
     
-    // 메뉴 상태값 및 가시성 스타일 일괄 갱신
-    updateCtxMenuUI();
-    
-    // 위치 연산 및 윈도우 삐침 한계선 보정
-    const menuWidth = 190;
-    const menuHeight = 220; // 서브메뉴 추가에 따른 높이 보정
-    let x = e.clientX;
-    let y = e.clientY;
-    
-    if (x + menuWidth > window.innerWidth) x = window.innerWidth - menuWidth - 10;
-    if (y + menuHeight > window.innerHeight) y = window.innerHeight - menuHeight - 10;
-    
-    contextMenu.style.left = `${x}px`;
-    contextMenu.style.top = `${y}px`;
-    contextMenu.style.display = 'block';
+    // 플랫폼 확인 (기존 변수 또는 userAgent 활용)
+    const isMac = (window.NATIVE_PLATFORM === 'mac' || navigator.userAgent.toUpperCase().includes('MAC'));
+
+    if (isMac) {
+        // macOS: Native 메뉴 API 호출 (좌표 및 컨텍스트 정보 전달)
+        if (window.pywebview && window.pywebview.api && window.pywebview.api.show_mac_native_menu) {
+            window.pywebview.api.show_mac_native_menu({
+                clientX: e.clientX,
+                clientY: e.clientY,
+                isCompareMode: isCompareMode,
+                isScrollSync: isScrollSync,
+                activePath: activePath,
+                currentSideContext: currentSideContext
+            });
+        }
+    } else {
+        // Windows: HTML 커스텀 메뉴 렌더링 (1px 오프셋)
+        const posX = e.clientX + 1;
+        const posY = e.clientY + 1;
+        updateCtxMenuUI();
+        contextMenu.style.left = `${posX}px`;
+        contextMenu.style.top = `${posY}px`;
+        contextMenu.style.display = 'block';
+    }
+});
+
+// 외부 좌클릭 시 HTML 메뉴 닫기 (Windows용)
+window.addEventListener('mousedown', (e) => {
+    if (e.button === 0 && contextMenu && contextMenu.style.display === 'block') {
+        if (!contextMenu.contains(e.target)) {
+            contextMenu.style.display = 'none';
+        }
+    }
 });
 
 // 메뉴 밖 영역 클릭 시 자동 닫기

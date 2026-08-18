@@ -14,6 +14,31 @@ import subprocess
 
 APP_VERSION = "3.0"
 
+if sys.platform == 'darwin':
+    try:
+        import objc
+        from AppKit import (
+            NSObject, NSMenu, NSMenuItem, NSAlternateKeyMask,
+            NSOnState, NSOffState, NSMakePoint, NSApplication,
+            NSEvent, NSEventTypeRightMouseDown
+        )
+        from PyObjCTools import AppHelper
+
+        class MenuActionTarget(NSObject):
+            def initWithCallback_(self, callback):
+                self = objc.super(MenuActionTarget, self).init()
+                if self is None:
+                    return None
+                self.callback = callback
+                return self
+
+            @objc.IBAction
+            def menuAction_(self, sender):
+                if self.callback:
+                    self.callback()
+    except Exception as e:
+        print(f"[MAC_NATIVE] PyObjC 로드 실패: {e}")
+
 # PyInstaller 빌드 시 리소스 경로 처리를 위한 함수
 def get_resource_path(relative_path):
     if hasattr(sys, '_MEIPASS'):
@@ -257,6 +282,167 @@ class ViewerAPI:
         sys.stdout.flush()
         return True
 
+    def show_mac_native_menu(self, *args, **kwargs):
+        if sys.platform != 'darwin':
+            return
+        
+        data = {}
+        if len(args) == 1 and isinstance(args[0], dict):
+            data = args[0]
+        elif len(args) >= 2:
+            data = {'clientX': args[0], 'clientY': args[1]}
+        data.update(kwargs)
+        
+        clientX = data.get('clientX', 0)
+        clientY = data.get('clientY', 0)
+        
+        print(f"[API] 🍎 show_mac_native_menu 호출됨: {data}")
+        sys.stdout.flush()
+
+        if not self._window:
+            return
+
+        def _show():
+            try:
+                menu = NSMenu.alloc().initWithTitle_('ContextMenu')
+                menu.setAutoenablesItems_(False)
+                
+                targets = []
+                self._current_menu_targets = targets
+
+                def make_item(title, callback, key='', mask=0, state=NSOffState, enabled=True):
+                    if callback:
+                        target = MenuActionTarget.alloc().initWithCallback_(callback)
+                        targets.append(target)
+                        item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(title, 'menuAction:', key)
+                        item.setTarget_(target)
+                    else:
+                        item = NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(title, '', key)
+                    if mask:
+                        item.setKeyEquivalentModifierMask_(mask)
+                    item.setState_(state)
+                    item.setEnabled_(enabled)
+                    return item
+
+                side = data.get('currentSideContext', 'left')
+                is_compare = bool(data.get('isCompareMode', False))
+                sub_title = '이미지 열기 (우측)' if (is_compare and side == 'right') else ('이미지 열기 (좌측)' if is_compare else '이미지 열기')
+
+                # 1. 이미지 열기 서브메뉴
+                open_sub_item = make_item(sub_title, None)
+                open_sub = NSMenu.alloc().initWithTitle_(sub_title)
+                open_sub.setAutoenablesItems_(False)
+                open_sub.addItem_(make_item('파일 열기', lambda: self._handle_mac_menu_action('open_file', side)))
+                open_sub.addItem_(make_item('폴더 열기', lambda: self._handle_mac_menu_action('open_folder', side)))
+                open_sub_item.setSubmenu_(open_sub)
+                menu.addItem_(open_sub_item)
+
+                # 2. 파일 위치 열기
+                active_path = data.get('activePath')
+                menu.addItem_(make_item('파일 위치 열기', lambda: self._handle_mac_menu_action('open_location', active_path), enabled=bool(active_path)))
+
+                menu.addItem_(NSMenuItem.separatorItem())
+
+                # 3. 비교보기 모드
+                menu.addItem_(make_item('비교보기 모드', lambda: self._handle_mac_menu_action('toggle_compare'), state=NSOnState if is_compare else NSOffState))
+
+                # 4. 스크롤 동기화
+                is_sync = bool(data.get('isScrollSync', False))
+                menu.addItem_(make_item('스크롤 동기화', lambda: self._handle_mac_menu_action('toggle_sync'), state=NSOnState if is_sync else NSOffState, enabled=is_compare))
+
+                menu.addItem_(NSMenuItem.separatorItem())
+
+                # 5. 현재 화면 캡처
+                menu.addItem_(make_item('현재 화면 캡처', lambda: self._handle_mac_menu_action('capture_screen'), key='c', mask=NSAlternateKeyMask))
+
+                # 6. 영역 지정 캡처
+                menu.addItem_(make_item('영역 지정 캡처', lambda: self._handle_mac_menu_action('capture_crop'), key='x', mask=NSAlternateKeyMask))
+
+                menu.addItem_(NSMenuItem.separatorItem())
+
+                # 7. 상세 설정 열기
+                menu.addItem_(make_item('상세 설정 열기', lambda: self._handle_mac_menu_action('open_settings')))
+
+                menu.addItem_(NSMenuItem.separatorItem())
+
+                # 8. 새 창 열기
+                menu.addItem_(make_item('새 창 열기', lambda: self._handle_mac_menu_action('new_window')))
+
+                app = NSApplication.sharedApplication()
+                app.activateIgnoringOtherApps_(True)
+
+                bv = getattr(webview.platforms.cocoa.BrowserView, 'instances', {}).get(self._window.uid)
+                ns_window = bv.window if bv else self._window.native
+                webview_host = bv.webview if bv else (ns_window.contentView() if ns_window else None)
+
+                if ns_window:
+                    ns_window.makeKeyAndOrderFront_(None)
+
+                # 마우스의 현재 글로벌 화면 좌표 기준 (view=None 설정 시 WKWebView의 이벤트 가로챔 및 즉시 취소 방지)
+                try:
+                    screen_mouse = NSEvent.mouseLocation()
+                except Exception:
+                    screen_mouse = NSMakePoint(float(clientX), float(clientY))
+
+                print(f"[COCOA_MENU] popUpMenuPositioningItem 호출 (화면 좌표: {screen_mouse.x}, {screen_mouse.y})")
+                sys.stdout.flush()
+                menu.popUpMenuPositioningItem_atLocation_inView_(None, screen_mouse, None)
+
+                # 메뉴 닫힘 직후 WebKitHost(WKWebView)로 FirstResponder, 포커스 및 커서 렉트 완전 복원
+                try:
+                    if ns_window and webview_host:
+                        ns_window.makeKeyAndOrderFront_(None)
+                        ns_window.makeFirstResponder_(webview_host)
+                        ns_window.invalidateCursorRectsForView_(webview_host)
+                        ns_window.resetCursorRects()
+                        webview_host.setNeedsDisplay_(True)
+                except Exception as focus_err:
+                    print(f"[COCOA_MENU] 포커스/커서 복원 실패: {focus_err}")
+                    sys.stdout.flush()
+
+
+
+            except Exception as e:
+                print(f"[COCOA_MENU_ERR] 메뉴 팝업 에러: {e}")
+                sys.stdout.flush()
+                import traceback
+                traceback.print_exc()
+
+        try:
+            AppHelper.callAfter(_show)
+        except Exception as e:
+            print(f"[COCOA_MENU_ERR] callAfter 실패: {e}")
+            sys.stdout.flush()
+
+    def _handle_mac_menu_action(self, action, *args):
+        try:
+            if action == 'open_file':
+                side = args[0] if args else 'left'
+                self._window.evaluate_js(f"triggerOpenDialog('file', '{side}')")
+            elif action == 'open_folder':
+                side = args[0] if args else 'left'
+                self._window.evaluate_js(f"triggerOpenDialog('folder', '{side}')")
+            elif action == 'open_location':
+                path = args[0] if args else None
+                if path:
+                    self.open_file_location(path)
+            elif action == 'toggle_compare':
+                self._window.evaluate_js("setCompareMode(!isCompareMode)")
+            elif action == 'toggle_sync':
+                self._window.evaluate_js("setScrollSync(!isScrollSync)")
+            elif action == 'capture_screen':
+                self._window.evaluate_js("document.getElementById('btn-capture') && document.getElementById('btn-capture').click()")
+            elif action == 'capture_crop':
+                self._window.evaluate_js("document.getElementById('btn-crop-capture') && document.getElementById('btn-crop-capture').click()")
+            elif action == 'open_settings':
+                self._window.evaluate_js("document.getElementById('settings-panel') && document.getElementById('settings-panel').classList.add('show')")
+            elif action == 'new_window':
+                self.open_new_window()
+        except Exception as err:
+            print(f"[NATIVE_MENU_ERR] 메뉴 액션 처리 실패 ({action}): {err}")
+            sys.stdout.flush()
+
+
 
 
 settings_lock = threading.Lock()
@@ -392,12 +578,15 @@ def start_app():
     
     api._window = window
     
-    # 창 설정 실시간 동기화
+    # 창 설정 실시간 동기화 및 즉시 종료 핸들러
     window.events.resized += lambda: sync_window_settings(window)
     window.events.moved += lambda: sync_window_settings(window)
+    window.events.closed += lambda: os._exit(0)
     
     is_frozen = hasattr(sys, 'frozen')
     webview.start(debug=False, storage_path=STORAGE_PATH, private_mode=False)
+    os._exit(0)
+
 
 if __name__ == '__main__':
     start_app()
