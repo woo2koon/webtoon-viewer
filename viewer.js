@@ -1432,7 +1432,8 @@ async function startProcess(files, side = 'left') {
             
             if (imgs.length === 0) throw new Error("인식 가능한 이미지 파일이 없습니다.");
             
-            showToast(`${imgs.length}개의 이미지를 불러옵니다. (${side === 'left' ? '왼쪽' : '오른쪽'})`, "camera");
+            const sideSuffix = isCompareMode ? ` (${side === 'left' ? '왼쪽' : '오른쪽'})` : '';
+            showToast(`${imgs.length}개의 이미지를 불러옵니다.${sideSuffix}`, "camera");
             
             imgs.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
             imageBlobs = imgs;
@@ -2519,7 +2520,17 @@ if (stepSlider) {
 //  8. 비저블 영역 캡처 기능 (Visible Area Capture) - 여백 제거 버전
 // ============================================================
 
+function hasLoadedImages() {
+    const hasLeft = document.body.classList.contains('has-images') && container && container.querySelectorAll('.webtoon-page').length > 0;
+    const hasRight = containerRight && containerRight.classList.contains('has-images-right') && containerRight.querySelectorAll('.webtoon-page').length > 0;
+    return hasLeft || hasRight;
+}
+
 document.getElementById('btn-capture').onclick = async () => {
+    if (!hasLoadedImages()) {
+        showToast("캡처를 수행할 수 없습니다.", "alert");
+        return;
+    }
     try {
         // 현재 화면(Viewport) 영역을 캡처 대상으로 지정
         const viewportRect = {
@@ -2667,6 +2678,11 @@ function stopAutoScrollLoop() {
 }
 
 document.getElementById('btn-crop-capture').onclick = async () => {
+    if (!hasLoadedImages()) {
+        showToast("캡처를 수행할 수 없습니다.", "alert");
+        return;
+    }
+
     if (isCompareMode) {
         // 비교보기 모드: 이미지 축소 직전 좌/우 화면의 중앙 앵커를 계산합니다.
         const leftAnchor = calculateCompareAnchor('left');
@@ -3165,9 +3181,34 @@ async function tLog(msg) {
 }
 
 
+function applyPlatformShortcuts() {
+    const isMac = (navigator.userAgent.toUpperCase().includes('MAC') || navigator.platform.toUpperCase().includes('MAC'));
+    if (isMac) {
+        const scCap = document.getElementById('ctx-shortcut-capture-screen');
+        if (scCap) scCap.textContent = '⌥C';
+        const scCrop = document.getElementById('ctx-shortcut-capture-crop');
+        if (scCrop) scCrop.textContent = '⌥X';
+    }
+
+    // 플랫폼별 웹뷰 렌더링 엔진 표기 (macOS: WebKit, Windows: WebView2)
+    const techEl = document.getElementById('info-app-tech') || document.querySelector('.info-app-tech');
+    if (techEl) {
+        const engine = isMac ? 'pywebview (WebKit)' : 'pywebview (WebView2)';
+        techEl.textContent = `Python 3.12 + ${engine} + Bottle + Canvas`;
+    }
+}
+
+// DOM 로드 즉시 및 초기화 시점에 단축키 라벨 적용
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', applyPlatformShortcuts);
+} else {
+    applyPlatformShortcuts();
+}
+
 async function initialize() {
     try {
         await tLog("🚀 Starting initialization...");
+        applyPlatformShortcuts();
         await loadSettings();
         restoreSliderLabels();
         updateScroll();
@@ -3300,30 +3341,13 @@ window.addEventListener('contextmenu', (e) => {
         }
     }
     
-    // 플랫폼 확인 (기존 변수 또는 userAgent 활용)
-    const isMac = (window.NATIVE_PLATFORM === 'mac' || navigator.userAgent.toUpperCase().includes('MAC'));
-
-    if (isMac) {
-        // macOS: Native 메뉴 API 호출 (좌표 및 컨텍스트 정보 전달)
-        if (window.pywebview && window.pywebview.api && window.pywebview.api.show_mac_native_menu) {
-            window.pywebview.api.show_mac_native_menu({
-                clientX: e.clientX,
-                clientY: e.clientY,
-                isCompareMode: isCompareMode,
-                isScrollSync: isScrollSync,
-                activePath: activePath,
-                currentSideContext: currentSideContext
-            });
-        }
-    } else {
-        // Windows: HTML 커스텀 메뉴 렌더링 (1px 오프셋)
-        const posX = e.clientX + 1;
-        const posY = e.clientY + 1;
-        updateCtxMenuUI();
-        contextMenu.style.left = `${posX}px`;
-        contextMenu.style.top = `${posY}px`;
-        contextMenu.style.display = 'block';
-    }
+    // 플랫폼과 무관하게 항상 HTML 커스텀 컨텍스트 메뉴 렌더링 (1px 오프셋)
+    const posX = e.clientX + 1;
+    const posY = e.clientY + 1;
+    updateCtxMenuUI();
+    contextMenu.style.left = `${posX}px`;
+    contextMenu.style.top = `${posY}px`;
+    contextMenu.style.display = 'block';
 });
 
 // 외부 좌클릭 시 HTML 메뉴 닫기 (Windows용)

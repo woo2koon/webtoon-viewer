@@ -1,3 +1,4 @@
 pywebview
 pyinstaller
 Pillow
+PySide6

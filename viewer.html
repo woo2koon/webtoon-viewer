@@ -635,7 +635,7 @@
                         <h2 class="info-app-title">Webtoon Viewer Pro</h2>
                         <p class="info-app-subtitle">스마트 웹툰 & 이미지 뷰어</p>
                         <p class="info-app-version">Version 3.0.0</p>
-                        <p class="info-app-tech">Python 3.12 + pywebview + Bottle + Canvas</p>
+                        <p id="info-app-tech" class="info-app-tech">Python 3.12 + pywebview + Bottle + Canvas</p>
                     </div>
                 </div>
 
@@ -739,12 +739,12 @@
         <div class="context-item" id="ctx-capture-screen">
             <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
             <span>현재 화면 캡처</span>
-            <span class="ctx-shortcut">Alt+C</span>
+            <span class="ctx-shortcut" id="ctx-shortcut-capture-screen">Alt+C</span>
         </div>
         <div class="context-item" id="ctx-capture-crop">
             <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 22V8a2 2 0 0 0-2-2H2"/></svg>
             <span>영역 지정 캡처</span>
-            <span class="ctx-shortcut">Alt+X</span>
+            <span class="ctx-shortcut" id="ctx-shortcut-capture-crop">Alt+X</span>
         </div>
         <div class="context-divider"></div>
         <div class="context-item" id="ctx-open-menu">
