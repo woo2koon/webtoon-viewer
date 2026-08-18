@@ -1,5 +1,6 @@
 import webview
 import os
+import io
 import base64
 import json
 import sys
@@ -9,6 +10,7 @@ import urllib.parse
 import urllib.request
 import tempfile
 import subprocess
+from PIL import Image
 
 
 
@@ -123,7 +125,7 @@ class ViewerAPI:
         result = self._window.create_file_dialog(webview.FileDialog.FOLDER)
         if result:
             folder_path = os.path.normpath(result[0]).replace("\\", "/")
-            files = [f for f in os.listdir(folder_path) if f.lower().endswith(('.jpg', '.jpeg', '.png', '.webp'))]
+            files = [f for f in os.listdir(folder_path) if f.lower().endswith(('.jpg', '.jpeg', '.png', '.webp', '.psd', '.gif', '.bmp'))]
             files.sort()
             return {"folderPath": folder_path, "files": files}
         return None
@@ -132,7 +134,7 @@ class ViewerAPI:
         result = self._window.create_file_dialog(
             webview.FileDialog.OPEN, 
             allow_multiple=True, 
-            file_types=('Image Files (*.jpg;*.jpeg;*.png;*.webp)', 'All files (*.*)')
+            file_types=('Image Files (*.jpg;*.jpeg;*.png;*.webp;*.psd;*.gif;*.bmp)', 'All files (*.*)')
         )
         if result:
             # 첫 번째 파일의 폴더 경로 추출
@@ -197,11 +199,27 @@ class ViewerAPI:
             # 브라우저 보안을 우회하기 위해 파이썬이 이미지를 직접 읽어 데이터로 변환합니다.
             path = os.path.normpath(file_path)
             if os.path.exists(path):
-                with open(path, "rb") as f:
-                    encoded = base64.b64encode(f.read()).decode('utf-8')
-                    ext = path.split('.')[-1].lower()
-                    mime = f"image/{ext}" if ext != 'jpg' else "image/jpeg"
-                    return f"data:{mime};base64,{encoded}"
+                ext = path.split('.')[-1].lower()
+                if ext == 'psd':
+                    try:
+                        with Image.open(path) as img:
+                            # RGBA 모드나 투명도 유지, CMYK인 경우 RGB 변환
+                            if img.mode in ('CMYK', 'P'):
+                                img = img.convert('RGB')
+                            elif img.mode not in ('RGB', 'RGBA'):
+                                img = img.convert('RGBA')
+                            buf = io.BytesIO()
+                            img.save(buf, format='PNG')
+                            encoded = base64.b64encode(buf.getvalue()).decode('utf-8')
+                            return f"data:image/png;base64,{encoded}"
+                    except Exception as psd_err:
+                        print(f"PSD 이미지 파싱 실패 ({path}): {psd_err}")
+                        return None
+                else:
+                    with open(path, "rb") as f:
+                        encoded = base64.b64encode(f.read()).decode('utf-8')
+                        mime = f"image/{ext}" if ext != 'jpg' else "image/jpeg"
+                        return f"data:{mime};base64,{encoded}"
             return None
         except Exception as e:
             print(f"이미지 데이터 변환 실패: {e}")
@@ -545,13 +563,27 @@ def serve_local_image():
     
     if os.path.exists(file_path) and os.path.isfile(file_path):
         ext = file_path.split('.')[-1].lower()
-        mime = f"image/{ext}" if ext != 'jpg' else "image/jpeg"
-        bottle.response.content_type = mime
-        try:
-            with open(file_path, 'rb') as f:
-                return f.read()
-        except Exception as e:
-            return bottle.HTTPError(500, f"Error reading file: {e}")
+        if ext == 'psd':
+            bottle.response.content_type = "image/png"
+            try:
+                with Image.open(file_path) as img:
+                    if img.mode in ('CMYK', 'P'):
+                        img = img.convert('RGB')
+                    elif img.mode not in ('RGB', 'RGBA'):
+                        img = img.convert('RGBA')
+                    buf = io.BytesIO()
+                    img.save(buf, format='PNG')
+                    return buf.getvalue()
+            except Exception as e:
+                return bottle.HTTPError(500, f"Error converting PSD file: {e}")
+        else:
+            mime = f"image/{ext}" if ext != 'jpg' else "image/jpeg"
+            bottle.response.content_type = mime
+            try:
+                with open(file_path, 'rb') as f:
+                    return f.read()
+            except Exception as e:
+                return bottle.HTTPError(500, f"Error reading file: {e}")
     else:
         return bottle.HTTPError(404, f"File not found: {file_path}")
 

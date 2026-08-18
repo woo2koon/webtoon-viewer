@@ -2,7 +2,7 @@
 echo Webtoon Viewer Pro - 빌드 시작...
 
 :: 1. 필요 라이브러리 확인 및 설치
-python -m pip install pyinstaller pywebview
+python -m pip install pyinstaller pywebview Pillow
 
 :: 2. PyInstaller 빌드 실행
 :: --onedir: 폴더 형태 빌드 (이노셋업 결합 시 실행 속도 극대화)

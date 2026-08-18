@@ -1426,7 +1426,7 @@ async function startProcess(files, side = 'left') {
         } else {
             const imgs = files.filter(f => {
                 const isImgType = f.type && f.type.startsWith('image/');
-                const isImgExt = /\.(jpg|jpeg|png|gif|webp|bmp)$/i.test(f.name);
+                const isImgExt = /\.(jpg|jpeg|png|gif|webp|bmp|psd)$/i.test(f.name);
                 return isImgType || isImgExt;
             });
             
