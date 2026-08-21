@@ -80,7 +80,8 @@ def load_all_settings():
             "stepAmount": 100,
             "minimapEnabled": True,
             "captureDir": "",
-            "captureLoupeEnabled": True
+            "captureLoupeEnabled": True,
+            "seamlessStitchingEnabled": True
         },
         "resume": {}
     }

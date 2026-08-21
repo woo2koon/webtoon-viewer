@@ -149,15 +149,14 @@
             pointer-events: none;
         }
 
-        /* 이미지 스타일 - 접합선 왜곡 및 서브픽셀 오차 방지 */
-        .viewer-image {
+        /* 이미지 및 심리스 캔버스 스타일 */
+        .viewer-image, .seamless-canvas {
             display: block; width: 100%; margin: 0; padding: 0; border: none;
-            margin-bottom: 0;
+            margin-bottom: -0.5px;
             vertical-align: top;
             transform: translateZ(0);
             backface-visibility: hidden;
-            image-rendering: -webkit-optimize-contrast;
-            image-rendering: crisp-edges;
+            image-rendering: auto;
         }
 
         /* 사이드바 */
@@ -1105,6 +1104,6 @@
         </div>
     </div>
     
-    <script src="viewer.js?v=3.3.2"></script>
+    <script src="viewer.js?v=3.4.8"></script>
 </body>
 </html>

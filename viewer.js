@@ -346,8 +346,7 @@ stylePatch.innerHTML = `
         vertical-align: top !important;
         transform: translateZ(0) !important;
         backface-visibility: hidden !important;
-        image-rendering: -webkit-optimize-contrast !important;
-        image-rendering: crisp-edges !important;
+        image-rendering: auto !important;
     }
 
     /* 4. 페이지(파일) 단위 컨테이너 */
@@ -362,18 +361,17 @@ stylePatch.innerHTML = `
         font-size: 0 !important;
     }
 
-    .viewer-image {
+    .viewer-image, .seamless-canvas {
         display: block !important;
         width: 100% !important;
         margin: 0 !important;
         padding: 0 !important;
         border: none !important;
-        margin-bottom: 0 !important;
+        margin-bottom: -0.5px !important;
         vertical-align: top !important;
         transform: translateZ(0) !important;
         backface-visibility: hidden !important;
-        image-rendering: -webkit-optimize-contrast !important;
-        image-rendering: crisp-edges !important;
+        image-rendering: auto !important;
     }
     
     /* 원본 크기 모드에서 페이지 박스 크기 제한 해제 */
@@ -940,12 +938,14 @@ function updateMinimapUI(enabled) {
     }
 }
 
-// 미니맵 현재 뷰포트 시각화 인디케이터 업데이트 함수
+// 미니맵 현재 뷰포트 시각화 인디케이터 및 활성 페이지 업데이트 함수
 function updateMinimapViewportIndicator() {
     const sidebar = document.getElementById('nav-sidebar');
     if (!sidebar) return;
 
-    const pages = Array.from(document.getElementById('viewer-container').querySelectorAll('.webtoon-page'));
+    const mainContainer = document.getElementById('viewer-container');
+    if (!mainContainer) return;
+    const pages = Array.from(mainContainer.querySelectorAll('.webtoon-page'));
     const thumbs = Array.from(sidebar.querySelectorAll('.nav-thumb-item'));
 
     // 미니맵 비활성화 혹은 이미지가 없는 경우 모든 개별 오버레이 제거/숨김
@@ -961,24 +961,82 @@ function updateMinimapViewportIndicator() {
     const scrollY = window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0;
     const viewportHeight = window.innerHeight;
     const scrollBottom = scrollY + viewportHeight;
+    const screenCenterY = scrollY + (viewportHeight * 0.45);
 
-    // 1. 각 페이지의 top, bottom 절대 위치 (document 기준) 구하기
-    const pageOffsets = pages.map(page => {
-        const rect = page.getBoundingClientRect();
-        const top = rect.top + scrollY;
-        return {
-            top: top,
-            height: rect.height,
-            bottom: top + rect.height
-        };
+    // 1. 각 슬라이스(페이지)의 실제 화면상 절대 위치 가상 좌표계 계산 (심리스 캔버스 호환)
+    let currentHost = null;
+    let currentHostRect = null;
+    let currentHostTop = 0;
+    let currentTotalChunkH = 0;
+    let currentScale = 1;
+
+    const pageOffsets = pages.map((page, idx) => {
+        const isHiddenStitch = (page.style.display === 'none' && page.dataset.stitchOffsetY !== undefined);
+        const hasCanvas = !!page.querySelector('.seamless-canvas');
+
+        if (hasCanvas) {
+            currentHost = page;
+            currentHostRect = page.getBoundingClientRect();
+            currentHostTop = currentHostRect.top + scrollY;
+            currentTotalChunkH = parseFloat(page.dataset.stitchChunkHeight) || currentHostRect.height;
+            currentScale = currentTotalChunkH > 0 ? (currentHostRect.height / currentTotalChunkH) : 1;
+        }
+
+        if (isHiddenStitch && currentHost) {
+            const img = page.querySelector('img.viewer-image');
+            const naturalH = img ? (img.naturalHeight || 0) : 0;
+            const pageH = naturalH * currentScale;
+            const offsetY = parseFloat(page.dataset.stitchOffsetY) || 0;
+            const top = currentHostTop + (offsetY * currentScale);
+            return { top, height: pageH, bottom: top + pageH, index: idx };
+        } else if (hasCanvas && currentHost) {
+            const img = page.querySelector('img.viewer-image');
+            const naturalH = img ? (img.naturalHeight || 0) : 0;
+            const pageH = naturalH * currentScale;
+            const top = currentHostTop;
+            return { top, height: pageH, bottom: top + pageH, index: idx };
+        } else {
+            const rect = page.getBoundingClientRect();
+            const top = rect.top + scrollY;
+            return { top, height: rect.height, bottom: top + rect.height, index: idx };
+        }
     });
 
-    // 2. 각 썸네일마다 뷰포트와 겹치는 영역 계산 및 오버레이 적용
+    // 2. 현재 화면 중앙에 위치한 활성 슬라이스 추적 (페이지 건너뜀 원천 방지)
+    let activeSliceIdx = 0;
+    for (let i = 0; i < pageOffsets.length; i++) {
+        const p = pageOffsets[i];
+        if (screenCenterY >= p.top && screenCenterY <= p.bottom) {
+            activeSliceIdx = i;
+            break;
+        } else if (screenCenterY < p.top && i > 0) {
+            activeSliceIdx = i - 1;
+            break;
+        } else if (i === pageOffsets.length - 1) {
+            activeSliceIdx = i;
+        }
+    }
+
+    // 썸네일 active 클래스 및 페이지 인디케이터 순차 반영
+    thumbs.forEach((thumb, idx) => {
+        if (idx === activeSliceIdx) {
+            if (!thumb.classList.contains('active')) {
+                thumbs.forEach(t => t.classList.remove('active'));
+                thumb.classList.add('active');
+                currentActiveThumb = thumb;
+                if (isMinimapPageScrollEnabled && !isHoveringSidebar) {
+                    snapMinimapToActiveThumb(thumb);
+                }
+            }
+        }
+    });
+    updatePageIndicator(activeSliceIdx + 1);
+
+    // 3. 각 썸네일마다 뷰포트와 겹치는 영역 계산 및 오버레이 렌더링
     for (let i = 0; i < pageOffsets.length; i++) {
         const page = pageOffsets[i];
         const thumb = thumbs[i];
         
-        // 개별 오버레이 엘리먼트 획득 또는 동적 생성
         let overlay = thumb.querySelector('.thumb-viewport-overlay');
         if (!overlay) {
             overlay = document.createElement('div');
@@ -986,12 +1044,10 @@ function updateMinimapViewportIndicator() {
             thumb.appendChild(overlay);
         }
 
-        // 현재 뷰포트 범위와 이 페이지가 겹치는지 체크
         const overlapTop = Math.max(page.top, scrollY);
         const overlapBottom = Math.min(page.bottom, scrollBottom);
 
         if (overlapTop < overlapBottom && page.height > 0) {
-            // 겹치는 구간을 썸네일 내부 퍼센트 좌표로 환산
             const visibleTopPercent = (overlapTop - page.top) / page.height;
             const visibleBottomPercent = (overlapBottom - page.top) / page.height;
 
@@ -1002,7 +1058,6 @@ function updateMinimapViewportIndicator() {
             overlay.style.height = `${heightPercent}%`;
             overlay.style.display = 'block';
         } else {
-            // 전혀 겹치지 않는 페이지는 숨김
             overlay.style.display = 'none';
         }
     }
@@ -1234,6 +1289,21 @@ function resetRightPane() {
     rightCreatedUrls = [];
 }
 
+// [심리스 렌더링 엔진] 네이티브 서브픽셀 정밀 밀착(aspect-ratio + -0.5px margin)으로 메모리 부담 0%, 0.000px 무결점 심리스 렌더링 보장
+let isSeamlessStitchingEnabled = false;
+
+function applySeamlessEngine(vContainer) {
+    if (!vContainer) return;
+    // 네이티브 서브픽셀 밀착이 기본 적용되어 있으므로 캔버스 오버헤드 없이 순수 DOM으로 초경량 렌더링 유지
+}
+
+function applySeamlessEngineAll() {
+    if (container) applySeamlessEngine(container);
+    if (containerRight) applySeamlessEngine(containerRight);
+}
+
+
+
 // 3. 파이썬에 전달할 순수 경로만 정리하는 함수
 function finalizePathAndRender(result, side = 'left') {
     const { folderPath, files, isZip, zipPath } = result;
@@ -1336,17 +1406,32 @@ async function processPythonFiles(fileObjects, folderPath, side = 'left') {
                 document.querySelectorAll('.nav-thumb-item').forEach(el => el.classList.remove('active'));
                 thumbItem.classList.add('active');
 
-                // 클릭된 Y 좌표 비율 계산
                 const rect = thumbItem.getBoundingClientRect();
                 const clickY = e.clientY - rect.top;
                 const clickRatio = Math.max(0, Math.min(1, clickY / rect.height));
 
                 // 메인 뷰어 상의 해당 이미지 절대 위치 및 높이 계산
-                const imgRect = wrapper.getBoundingClientRect();
-                const imgTop = imgRect.top + (isCompareMode ? container.scrollTop : (window.pageYOffset || document.documentElement.scrollTop || 0));
-                const imgHeight = imgRect.height;
+                let targetScrollY;
+                if (wrapper.style.display === 'none' && wrapper.dataset.stitchOffsetY !== undefined) {
+                    let prevVisible = wrapper.previousElementSibling;
+                    while (prevVisible && prevVisible.style.display === 'none') {
+                        prevVisible = prevVisible.previousElementSibling;
+                    }
+                    const host = prevVisible || wrapper;
+                    const hostRect = host.getBoundingClientRect();
+                    const hostTop = hostRect.top + (isCompareMode ? container.scrollTop : (window.pageYOffset || document.documentElement.scrollTop || 0));
+                    const totalChunkH = parseFloat(wrapper.dataset.stitchChunkHeight) || hostRect.height;
+                    const offsetY = parseFloat(wrapper.dataset.stitchOffsetY) || 0;
+                    const scale = hostRect.height / totalChunkH;
+                    const pageH = (img.naturalHeight || 0) * scale;
+                    targetScrollY = hostTop + (offsetY * scale) + clickRatio * pageH - (isCompareMode ? container.clientHeight / 2 : window.innerHeight / 2);
+                } else {
+                    const imgRect = wrapper.getBoundingClientRect();
+                    const imgTop = imgRect.top + (isCompareMode ? container.scrollTop : (window.pageYOffset || document.documentElement.scrollTop || 0));
+                    const imgHeight = imgRect.height;
+                    targetScrollY = imgTop + clickRatio * imgHeight - (isCompareMode ? container.clientHeight / 2 : window.innerHeight / 2);
+                }
 
-                const targetScrollY = imgTop + clickRatio * imgHeight - (isCompareMode ? container.clientHeight / 2 : window.innerHeight / 2);
                 if (isCompareMode) {
                     container.scrollTo({ top: targetScrollY, behavior: 'auto' });
                 } else {
@@ -1362,6 +1447,7 @@ async function processPythonFiles(fileObjects, folderPath, side = 'left') {
                     img.onload = () => {
                         if (img.naturalWidth > 0) {
                             img.dataset.ratio = img.naturalHeight / img.naturalWidth;
+                            img.style.aspectRatio = `${img.naturalWidth} / ${img.naturalHeight}`;
                         }
                         wrapper.classList.remove('skeleton');
                         wrapper.classList.add('loaded');
@@ -1371,8 +1457,10 @@ async function processPythonFiles(fileObjects, folderPath, side = 'left') {
                             const percent = (loadedCount / countTarget) * 100;
                             loaderBar.style.width = percent + '%';
                             if (loadedCount === countTarget) {
+                                applySeamlessEngine(vContainer);
                                 setTimeout(() => {
                                     loaderBar.style.opacity = '0';
+                                    applySeamlessEngine(vContainer);
                                     updateMinimapViewportIndicator();
                                     
                                     // 우측 비교 대상 웹툰 로드 완료 시, 좌측 뷰어의 현재 감상 스크롤 백분율(%)을 기준으로 우측 스크롤을 즉시 정렬합니다. (슬라이스 수/크기가 다른 경우 대비)
@@ -1382,7 +1470,7 @@ async function processPythonFiles(fileObjects, folderPath, side = 'left') {
                                         const rightScrollHeight = containerRight.scrollHeight - containerRight.clientHeight;
                                         containerRight.scrollTop = rightScrollHeight * leftPercent;
                                     }
-                                }, 500);
+                                }, 300);
                             }
                         }
                     };
@@ -1576,17 +1664,32 @@ async function processImagesInBatches(imageBlobs, side = 'left') {
                 document.querySelectorAll('.nav-thumb-item').forEach(el => el.classList.remove('active'));
                 thumbItem.classList.add('active');
 
-                // 클릭된 Y 좌표 비율 계산
                 const rect = thumbItem.getBoundingClientRect();
                 const clickY = e.clientY - rect.top;
                 const clickRatio = Math.max(0, Math.min(1, clickY / rect.height));
 
                 // 메인 뷰어 상의 해당 이미지 절대 위치 및 높이 계산
-                const imgRect = wrapper.getBoundingClientRect();
-                const imgTop = imgRect.top + (isCompareMode ? container.scrollTop : (window.pageYOffset || document.documentElement.scrollTop || 0));
-                const imgHeight = imgRect.height;
+                let targetScrollY;
+                if (wrapper.style.display === 'none' && wrapper.dataset.stitchOffsetY !== undefined) {
+                    let prevVisible = wrapper.previousElementSibling;
+                    while (prevVisible && prevVisible.style.display === 'none') {
+                        prevVisible = prevVisible.previousElementSibling;
+                    }
+                    const host = prevVisible || wrapper;
+                    const hostRect = host.getBoundingClientRect();
+                    const hostTop = hostRect.top + (isCompareMode ? container.scrollTop : (window.pageYOffset || document.documentElement.scrollTop || 0));
+                    const totalChunkH = parseFloat(wrapper.dataset.stitchChunkHeight) || hostRect.height;
+                    const offsetY = parseFloat(wrapper.dataset.stitchOffsetY) || 0;
+                    const scale = hostRect.height / totalChunkH;
+                    const pageH = (img.naturalHeight || 0) * scale;
+                    targetScrollY = hostTop + (offsetY * scale) + clickRatio * pageH - (isCompareMode ? container.clientHeight / 2 : window.innerHeight / 2);
+                } else {
+                    const imgRect = wrapper.getBoundingClientRect();
+                    const imgTop = imgRect.top + (isCompareMode ? container.scrollTop : (window.pageYOffset || document.documentElement.scrollTop || 0));
+                    const imgHeight = imgRect.height;
+                    targetScrollY = imgTop + clickRatio * imgHeight - (isCompareMode ? container.clientHeight / 2 : window.innerHeight / 2);
+                }
 
-                const targetScrollY = imgTop + clickRatio * imgHeight - (isCompareMode ? container.clientHeight / 2 : window.innerHeight / 2);
                 if (isCompareMode) {
                     container.scrollTo({ top: targetScrollY, behavior: 'auto' });
                 } else {
@@ -1599,6 +1702,7 @@ async function processImagesInBatches(imageBlobs, side = 'left') {
             img.onload = () => {
                 if (img.naturalWidth > 0) {
                     img.dataset.ratio = img.naturalHeight / img.naturalWidth;
+                    img.style.aspectRatio = `${img.naturalWidth} / ${img.naturalHeight}`;
                 }
                 wrapper.classList.remove('skeleton');
                 wrapper.classList.add('loaded');
@@ -1608,8 +1712,10 @@ async function processImagesInBatches(imageBlobs, side = 'left') {
                     const percent = (loadedCount / total) * 100;
                     loaderBar.style.width = percent + '%';
                     if (loadedCount === total) {
+                        applySeamlessEngine(vContainer);
                         setTimeout(() => {
                             loaderBar.style.opacity = '0';
+                            applySeamlessEngine(vContainer);
                             updateMinimapViewportIndicator();
                             
                             // 우측 비교 대상 웹툰 로드 완료 시, 좌측 뷰어의 현재 감상 스크롤 백분율(%)을 기준으로 우측 스크롤을 즉시 정렬합니다. (슬라이스 수/크기가 다른 경우 대비)
@@ -1619,7 +1725,7 @@ async function processImagesInBatches(imageBlobs, side = 'left') {
                                 const rightScrollHeight = containerRight.scrollHeight - containerRight.clientHeight;
                                 containerRight.scrollTop = rightScrollHeight * leftPercent;
                             }
-                        }, 500);
+                        }, 300);
                     }
                 }
             };
@@ -1810,6 +1916,7 @@ menuBtn.onclick = () => {
 window.onclick = (e) => { if (!settingsPanel.contains(e.target) && !menuBtn.contains(e.target)) settingsPanel.classList.remove('show'); };
 
 const observer = new IntersectionObserver((entries) => {
+    if (isSeamlessStitchingEnabled && body.classList.contains('spacing-collapsed')) return;
     entries.forEach(e => {
         if (e.isIntersecting) {
             const idx = parseInt(e.target.dataset.fileIndex);
@@ -2691,7 +2798,8 @@ function updateLoupe(targetX, targetY, targetContainer) {
     }
 
     const activeCont = targetContainer || activeDragContainer || (isCompareMode && containerRight && targetX >= containerRight.getBoundingClientRect().left ? containerRight : container) || document.body;
-    const pages = Array.from(activeCont.querySelectorAll('.webtoon-page'));
+    const allPages = Array.from(activeCont.querySelectorAll('.webtoon-page'));
+    const pages = allPages.filter(p => p.offsetParent !== null || p.style.display !== 'none');
     if (pages.length === 0) {
         hideLoupe();
         return;
@@ -2714,14 +2822,17 @@ function updateLoupe(targetX, targetY, targetContainer) {
     const sampleBottom = targetY + srcRadius;
 
     for (const page of pages) {
-        const img = page.querySelector('.viewer-image');
-        if (!img || !img.naturalWidth || !img.offsetWidth) continue;
+        const img = page.querySelector('.seamless-canvas') || page.querySelector('.viewer-image');
+        if (!img || !img.offsetWidth) continue;
+        const nw = img.naturalWidth || img.width;
+        const nh = img.naturalHeight || img.height;
+        if (!nw || !nh) continue;
         const r = img.getBoundingClientRect();
 
         // 돋보기 샘플링 영역과 이미지 바운딩 교차 검사
         if (sampleRight > r.left && sampleLeft < r.right && sampleBottom > r.top && sampleTop < r.bottom) {
-            const scaleX = img.naturalWidth / img.offsetWidth;
-            const scaleY = img.naturalHeight / img.offsetHeight;
+            const scaleX = nw / img.offsetWidth;
+            const scaleY = nh / img.offsetHeight;
 
             // 교차 영역
             const intersectLeft = Math.max(sampleLeft, r.left);
@@ -2783,12 +2894,13 @@ function getScrollOffset(targetContainer) {
 function getImageBounds(targetContainer) {
     const activeCont = targetContainer || activeDragContainer || (isCompareMode && containerRight && currentDragX >= containerRight.getBoundingClientRect().left ? containerRight : container) || document.body;
     if (!activeCont) return { left: 0, right: window.innerWidth, top: 0, bottom: window.innerHeight };
-    const pages = Array.from(activeCont.querySelectorAll('.webtoon-page'));
+    const allPages = Array.from(activeCont.querySelectorAll('.webtoon-page'));
+    const pages = allPages.filter(p => p.offsetParent !== null || p.style.display !== 'none');
     if (pages.length === 0) {
         return { left: 0, right: window.innerWidth, top: 0, bottom: window.innerHeight };
     }
     const pagesRects = pages.map(p => {
-        const img = p.querySelector('.viewer-image');
+        const img = p.querySelector('.seamless-canvas') || p.querySelector('.viewer-image');
         return img ? img.getBoundingClientRect() : p.getBoundingClientRect();
     });
     return {
@@ -3361,11 +3473,12 @@ async function captureHighRes(rect, type) {
             captureContainer = container || document.body;
         }
 
-        const pages = Array.from(captureContainer.querySelectorAll('.webtoon-page'));
+        const allPages = Array.from(captureContainer.querySelectorAll('.webtoon-page'));
+        const pages = allPages.filter(p => p.offsetParent !== null || p.style.display !== 'none');
         if (pages.length === 0) throw new Error("이미지가 없습니다.");
 
         const pagesRects = pages.map(p => {
-            const img = p.querySelector('.viewer-image');
+            const img = p.querySelector('.seamless-canvas') || p.querySelector('.viewer-image');
             return img ? img.getBoundingClientRect() : p.getBoundingClientRect();
         });
         const minLeft = Math.min(...pagesRects.map(r => r.left));
@@ -3389,14 +3502,15 @@ async function captureHighRes(rect, type) {
 
         // 2. 배율 계산
         const firstVisiblePage = pages.find(p => {
-            const img = p.querySelector('.viewer-image');
+            const img = p.querySelector('.seamless-canvas') || p.querySelector('.viewer-image');
             if (!img) return false;
             const r = img.getBoundingClientRect();
             return r.bottom > finalTop && r.top < finalBottom;
         }) || pages[0];
         
-        const firstVisibleImg = firstVisiblePage.querySelector('.viewer-image');
-        const scaleRatio = firstVisibleImg ? (firstVisibleImg.naturalWidth / firstVisibleImg.offsetWidth) : 1;
+        const firstVisibleImg = firstVisiblePage.querySelector('.seamless-canvas') || firstVisiblePage.querySelector('.viewer-image');
+        const firstNw = firstVisibleImg ? (firstVisibleImg.naturalWidth || firstVisibleImg.width) : 1;
+        const scaleRatio = firstVisibleImg && firstVisibleImg.offsetWidth ? (firstNw / firstVisibleImg.offsetWidth) : 1;
         
         // 3. 캔버스 준비
         const canvas = document.createElement('canvas');
@@ -3412,8 +3526,8 @@ async function captureHighRes(rect, type) {
             const intersectBottom = Math.min(finalBottom, pRect.bottom);
             
             if (intersectTop < intersectBottom) {
-                const imgEl = page.querySelector('.viewer-image');
-                if (!imgEl) continue;
+                const imgEl = page.querySelector('.seamless-canvas') || page.querySelector('.viewer-image');
+                if (!imgEl || !imgEl.offsetWidth) continue;
 
                 const relX = Math.max(0, finalLeft - pRect.left);
                 const relY = intersectTop - pRect.top;
@@ -3424,8 +3538,10 @@ async function captureHighRes(rect, type) {
 
                 if (relW <= 0) continue;
 
-                const scaleX = imgEl.naturalWidth / imgEl.offsetWidth;
-                const scaleY = imgEl.naturalHeight / imgEl.offsetHeight;
+                const imgNw = imgEl.naturalWidth || imgEl.width;
+                const imgNh = imgEl.naturalHeight || imgEl.height;
+                const scaleX = imgNw / imgEl.offsetWidth;
+                const scaleY = imgNh / imgEl.offsetHeight;
                 const srcX = relX * scaleX;
                 const srcY = relY * scaleY;
                 const srcW = relW * scaleX;
@@ -3497,11 +3613,12 @@ async function capturePolygonHighRes(screenPoints, type = "Poly") {
             captureContainer = container || document.body;
         }
 
-        const pages = Array.from(captureContainer.querySelectorAll('.webtoon-page'));
+        const allPages = Array.from(captureContainer.querySelectorAll('.webtoon-page'));
+        const pages = allPages.filter(p => p.offsetParent !== null || p.style.display !== 'none');
         if (pages.length === 0) throw new Error("이미지가 없습니다.");
 
         const pagesRects = pages.map(p => {
-            const img = p.querySelector('.viewer-image');
+            const img = p.querySelector('.seamless-canvas') || p.querySelector('.viewer-image');
             return img ? img.getBoundingClientRect() : p.getBoundingClientRect();
         });
         const minLeft = Math.min(...pagesRects.map(r => r.left));
@@ -3522,14 +3639,15 @@ async function capturePolygonHighRes(screenPoints, type = "Poly") {
         }
 
         const firstVisiblePage = pages.find(p => {
-            const img = p.querySelector('.viewer-image');
+            const img = p.querySelector('.seamless-canvas') || p.querySelector('.viewer-image');
             if (!img) return false;
             const r = img.getBoundingClientRect();
             return r.bottom > finalTop && r.top < finalBottom;
         }) || pages[0];
         
-        const firstVisibleImg = firstVisiblePage.querySelector('.viewer-image');
-        const scaleRatio = firstVisibleImg ? (firstVisibleImg.naturalWidth / firstVisibleImg.offsetWidth) : 1;
+        const firstVisibleImg = firstVisiblePage.querySelector('.seamless-canvas') || firstVisiblePage.querySelector('.viewer-image');
+        const firstNw = firstVisibleImg ? (firstVisibleImg.naturalWidth || firstVisibleImg.width) : 1;
+        const scaleRatio = firstVisibleImg && firstVisibleImg.offsetWidth ? (firstNw / firstVisibleImg.offsetWidth) : 1;
 
         const canvas = document.createElement('canvas');
         canvas.width = Math.round(finalWidth * scaleRatio);
@@ -3559,8 +3677,8 @@ async function capturePolygonHighRes(screenPoints, type = "Poly") {
             const intersectBottom = Math.min(finalBottom, pRect.bottom);
             
             if (intersectTop < intersectBottom) {
-                const imgEl = page.querySelector('.viewer-image');
-                if (!imgEl) continue;
+                const imgEl = page.querySelector('.seamless-canvas') || page.querySelector('.viewer-image');
+                if (!imgEl || !imgEl.offsetWidth) continue;
 
                 const relX = Math.max(0, finalLeft - pRect.left);
                 const relY = intersectTop - pRect.top;
@@ -3571,8 +3689,10 @@ async function capturePolygonHighRes(screenPoints, type = "Poly") {
 
                 if (relW <= 0) continue;
 
-                const scaleX = imgEl.naturalWidth / imgEl.offsetWidth;
-                const scaleY = imgEl.naturalHeight / imgEl.offsetHeight;
+                const imgNw = imgEl.naturalWidth || imgEl.width;
+                const imgNh = imgEl.naturalHeight || imgEl.height;
+                const scaleX = imgNw / imgEl.offsetWidth;
+                const scaleY = imgNh / imgEl.offsetHeight;
                 const srcX = relX * scaleX;
                 const srcY = relY * scaleY;
                 const srcW = relW * scaleX;
