@@ -342,6 +342,12 @@ stylePatch.innerHTML = `
         width: auto !important;
         max-width: none !important;
         height: auto !important;
+        margin-bottom: 0 !important;
+        vertical-align: top !important;
+        transform: translateZ(0) !important;
+        backface-visibility: hidden !important;
+        image-rendering: -webkit-optimize-contrast !important;
+        image-rendering: crisp-edges !important;
     }
 
     /* 4. 페이지(파일) 단위 컨테이너 */
@@ -352,6 +358,22 @@ stylePatch.innerHTML = `
         padding: 0 !important;
         background: transparent !important;
         flex-shrink: 0 !important; /* 비교모드 Flex 컨테이너 내 찌부러짐 방지 */
+        line-height: 0 !important;
+        font-size: 0 !important;
+    }
+
+    .viewer-image {
+        display: block !important;
+        width: 100% !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        border: none !important;
+        margin-bottom: 0 !important;
+        vertical-align: top !important;
+        transform: translateZ(0) !important;
+        backface-visibility: hidden !important;
+        image-rendering: -webkit-optimize-contrast !important;
+        image-rendering: crisp-edges !important;
     }
     
     /* 원본 크기 모드에서 페이지 박스 크기 제한 해제 */
@@ -1100,6 +1122,13 @@ async function loadSettings() {
         captureDirValue.title = captureDir || "기본 사진 저장 폴더";
     }
 
+    // 11. 캡처 정밀 돋보기(스코프) 설정
+    isCaptureLoupeEnabled = app.captureLoupeEnabled !== false;
+    const toggleCaptureLoupeEl = document.getElementById('toggle-capture-loupe');
+    if (toggleCaptureLoupeEl) {
+        toggleCaptureLoupeEl.checked = isCaptureLoupeEnabled;
+    }
+
     // 초기 설정 로드 완료 후 트랜지션 다시 활성화 (시작 시 스르륵 전환 깜빡임 방지)
     setTimeout(() => {
         body.classList.remove('no-transition');
@@ -1207,10 +1236,10 @@ function resetRightPane() {
 
 // 3. 파이썬에 전달할 순수 경로만 정리하는 함수
 function finalizePathAndRender(result, side = 'left') {
-    const { folderPath, files } = result;
+    const { folderPath, files, isZip, zipPath } = result;
 
     const fileObjects = files.map(fileName => {
-        const fullPath = `${folderPath}/${fileName}`;
+        const fullPath = isZip ? `${zipPath}::${fileName}` : `${folderPath}/${fileName}`;
         return { name: fileName, rawPath: fullPath };
     });
 
@@ -1225,6 +1254,14 @@ async function processPythonFiles(fileObjects, folderPath, side = 'left') {
     const navSidebar = document.getElementById('nav-sidebar'); // 썸네일 컨테이너
 
     if (!vContainer) return;
+
+    if (!fileObjects || fileObjects.length === 0) {
+        showToast("인식 가능한 이미지 파일이 없습니다.", "alert");
+        return;
+    }
+
+    const sideSuffix = isCompareMode ? ` (${side === 'left' ? '왼쪽' : '오른쪽'})` : '';
+    showToast(`${fileObjects.length}개의 이미지를 불러옵니다.${sideSuffix}`, "camera");
 
     // 새로운 파일 로드 시 기존 찌꺼기 스크롤 강제 초기화
     if (isRight) {
@@ -1502,12 +1539,8 @@ async function processImagesInBatches(imageBlobs, side = 'left') {
 
     for (let i = 0; i < total; i++) {
         const blob = imageBlobs[i];
-        const url = URL.createObjectURL(blob);
-        if (!isRight) {
-            createdUrls.push(url);
-        } else {
-            rightCreatedUrls.push(url);
-        }
+        const fileName = blob.name || `image_${i}`;
+        const isPsd = /\.psd$/i.test(fileName);
 
         // 메인 이미지 및 스켈레톤 틀
         const wrapper = document.createElement('div');
@@ -1521,32 +1554,6 @@ async function processImagesInBatches(imageBlobs, side = 'left') {
         
         wrapper.appendChild(img);
         vContainer.appendChild(wrapper);
-
-        img.onload = () => {
-            wrapper.classList.remove('skeleton');
-            wrapper.classList.add('loaded');
-            
-            loadedCount++;
-            if (loaderBar) {
-                const percent = (loadedCount / total) * 100;
-                loaderBar.style.width = percent + '%';
-                if (loadedCount === total) {
-                    setTimeout(() => {
-                        loaderBar.style.opacity = '0';
-                        updateMinimapViewportIndicator();
-                        
-                        // 우측 비교 대상 웹툰 로드 완료 시, 좌측 뷰어의 현재 감상 스크롤 백분율(%)을 기준으로 우측 스크롤을 즉시 정렬합니다. (슬라이스 수/크기가 다른 경우 대비)
-                        if (isRight && isCompareMode && container && containerRight) {
-                            const leftScrollHeight = container.scrollHeight - container.clientHeight;
-                            const leftPercent = leftScrollHeight > 0 ? (container.scrollTop / leftScrollHeight) : 0;
-                            const rightScrollHeight = containerRight.scrollHeight - containerRight.clientHeight;
-                            containerRight.scrollTop = rightScrollHeight * leftPercent;
-                        }
-                    }, 500);
-                }
-            }
-        };
-        img.src = url;
 
         let thumbImg = null;
         // 썸네일 (좌측에만 생성)
@@ -1562,7 +1569,6 @@ async function processImagesInBatches(imageBlobs, side = 'left') {
             thumbItem.appendChild(label);
 
             thumbImg = document.createElement('img');
-            thumbImg.src = url;
             thumbItem.appendChild(thumbImg);
             navSidebar.appendChild(thumbItem);
 
@@ -1589,6 +1595,73 @@ async function processImagesInBatches(imageBlobs, side = 'left') {
             };
         }
 
+        const onImageReady = (srcUrl) => {
+            img.onload = () => {
+                if (img.naturalWidth > 0) {
+                    img.dataset.ratio = img.naturalHeight / img.naturalWidth;
+                }
+                wrapper.classList.remove('skeleton');
+                wrapper.classList.add('loaded');
+                
+                loadedCount++;
+                if (loaderBar) {
+                    const percent = (loadedCount / total) * 100;
+                    loaderBar.style.width = percent + '%';
+                    if (loadedCount === total) {
+                        setTimeout(() => {
+                            loaderBar.style.opacity = '0';
+                            updateMinimapViewportIndicator();
+                            
+                            // 우측 비교 대상 웹툰 로드 완료 시, 좌측 뷰어의 현재 감상 스크롤 백분율(%)을 기준으로 우측 스크롤을 즉시 정렬합니다. (슬라이스 수/크기가 다른 경우 대비)
+                            if (isRight && isCompareMode && container && containerRight) {
+                                const leftScrollHeight = container.scrollHeight - container.clientHeight;
+                                const leftPercent = leftScrollHeight > 0 ? (container.scrollTop / leftScrollHeight) : 0;
+                                const rightScrollHeight = containerRight.scrollHeight - containerRight.clientHeight;
+                                containerRight.scrollTop = rightScrollHeight * leftPercent;
+                            }
+                        }, 500);
+                    }
+                }
+            };
+            img.onerror = () => {
+                wrapper.classList.remove('skeleton');
+                loadedCount++;
+            };
+            img.src = srcUrl;
+            if (thumbImg) thumbImg.src = srcUrl;
+        };
+
+        if (isPsd) {
+            // PSD 파일인 경우 파이썬 API로 PNG 변환 요청
+            const reader = new FileReader();
+            reader.onload = () => {
+                const base64Data = reader.result;
+                if (window.pywebview && window.pywebview.api && window.pywebview.api.convert_psd_data) {
+                    window.pywebview.api.convert_psd_data(base64Data).then(pngDataUrl => {
+                        if (pngDataUrl) {
+                            onImageReady(pngDataUrl);
+                        } else {
+                            wrapper.classList.remove('skeleton');
+                        }
+                    }).catch(err => {
+                        console.error("PSD 변환 실패:", err);
+                        wrapper.classList.remove('skeleton');
+                    });
+                } else {
+                    wrapper.classList.remove('skeleton');
+                }
+            };
+            reader.readAsDataURL(blob);
+        } else {
+            const url = URL.createObjectURL(blob);
+            if (!isRight) {
+                createdUrls.push(url);
+            } else {
+                rightCreatedUrls.push(url);
+            }
+            onImageReady(url);
+        }
+
         processedCount++;
         if (i % 10 === 0) await new Promise(r => requestAnimationFrame(r));
     }
@@ -1598,13 +1671,15 @@ async function unzipFiles(file) {
     const zip = await new JSZip().loadAsync(file);
     const validFiles = [];
     zip.forEach((path, entry) => {
-        if (!entry.dir && /\.(jpg|jpeg|png|gif|webp|bmp)$/i.test(entry.name)) validFiles.push(entry);
+        if (!entry.dir && /\.(jpg|jpeg|png|gif|webp|bmp|psd)$/i.test(entry.name)) validFiles.push(entry);
     });
     validFiles.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
     
     const blobs = [];
     for (let i = 0; i < validFiles.length; i++) {
-        blobs.push(await validFiles[i].async('blob'));
+        const entryBlob = await validFiles[i].async('blob');
+        entryBlob.name = validFiles[i].name;
+        blobs.push(entryBlob);
         if (i % 20 === 0) await new Promise(r => requestAnimationFrame(r));
     }
     return blobs;
@@ -2169,6 +2244,17 @@ if (accordionCaptureHeader && accordionCaptureContent) {
     };
 }
 
+// 캡처 정밀 돋보기(스코프) On/Off 이벤트
+const toggleCaptureLoupe = document.getElementById('toggle-capture-loupe');
+if (toggleCaptureLoupe) {
+    toggleCaptureLoupe.addEventListener('change', (e) => {
+        isCaptureLoupeEnabled = e.target.checked;
+        if (window.pywebview && window.pywebview.api) {
+            window.pywebview.api.save_settings({ app: { captureLoupeEnabled: isCaptureLoupeEnabled } });
+        }
+    });
+}
+
 // 단축키 로직 수정 (기존 window.onkeydown을 찾아서 내용을 추가하세요)
 const originalOnKeyDown = window.onkeydown;
 window.onkeydown = (e) => {
@@ -2215,8 +2301,18 @@ window.onkeydown = (e) => {
     }
 
     // [추가] Alt+X 키를 누르면 영역 지정 캡처 (한글 입력 상태 'ㅌ' 및 물리 키 'KeyX' 대응)
-    if (e.altKey && (key === 'x' || key === 'ㅌ' || e.code === 'KeyX') && !(typeof isSelecting !== 'undefined' && isSelecting)) {
+    if (e.altKey && (key === 'x' || key === 'ㅌ' || e.code === 'KeyX') && !(typeof isSelecting !== 'undefined' && isSelecting) && !(typeof isPolyActive !== 'undefined' && isPolyActive)) {
         const btn = document.getElementById('btn-crop-capture');
+        if (btn) {
+            btn.click();
+            e.preventDefault();
+            e.stopPropagation();
+        }
+    }
+
+    // [추가] Alt+Z 키를 누르면 자유형(4점) 영역 지정 캡처 (한글 입력 상태 'ㅋ' 및 물리 키 'KeyZ' 대응)
+    if (e.altKey && (key === 'z' || key === 'ㅋ' || e.code === 'KeyZ') && !(typeof isSelecting !== 'undefined' && isSelecting) && !(typeof isPolyActive !== 'undefined' && isPolyActive)) {
+        const btn = document.getElementById('btn-poly-capture');
         if (btn) {
             btn.click();
             e.preventDefault();
@@ -2550,7 +2646,7 @@ document.getElementById('btn-capture').onclick = async () => {
     }
 };
 // ============================================================
-//  9. 영역 지정 캡처 (Crop Capture)
+//  9. 영역 지정 캡처 (Crop Capture) & 자유형 4점 캡처 (Poly Capture)
 // ============================================================
 
 let isSelecting = false;
@@ -2562,12 +2658,149 @@ let currentDragY = 0;
 let activeDragContainer = null;
 let autoScrollTimer = null;
 
-const selectionBox = document.createElement('div');
-selectionBox.id = 'selection-box';
-document.body.appendChild(selectionBox);
+// [자유형 캡처 상태 변수]
+let isPolyActive = false;
+let polyStep = 'none'; // 'none' | 'drag' | 'adjust'
+let polyDocPoints = []; // 4개 꼭짓점 [{docX, docY}, ...]
+let activePolyHandle = null;
+
+// [원형 돋보기(스코프) 상태 변수 및 DOM]
+let isCaptureLoupeEnabled = true;
+const captureLoupe = document.getElementById('capture-loupe');
+const captureLoupeCanvas = document.getElementById('capture-loupe-canvas');
+const captureLoupeCtx = captureLoupeCanvas ? captureLoupeCanvas.getContext('2d') : null;
+
+const selectionBox = document.getElementById('selection-box') || document.createElement('div');
+if (!selectionBox.id) {
+    selectionBox.id = 'selection-box';
+    document.body.appendChild(selectionBox);
+}
+
+const polySvg = document.getElementById('poly-capture-svg');
+const polyPolygon = document.getElementById('poly-capture-polygon');
+const polyHandles = [0, 1, 2, 3].map(i => document.getElementById(`poly-handle-${i}`));
+const polyToolbar = document.getElementById('poly-capture-toolbar');
+const btnPolyConfirm = document.getElementById('btn-poly-confirm');
+const btnPolyCancel = document.getElementById('btn-poly-cancel');
+
+// [원형 스코프(돋보기) 실시간 확대 렌더링 함수]
+function updateLoupe(targetX, targetY, targetContainer) {
+    if (!isCaptureLoupeEnabled || !captureLoupe || !captureLoupeCanvas || !captureLoupeCtx) {
+        hideLoupe();
+        return;
+    }
+
+    const activeCont = targetContainer || activeDragContainer || (isCompareMode && containerRight && targetX >= containerRight.getBoundingClientRect().left ? containerRight : container) || document.body;
+    const pages = Array.from(activeCont.querySelectorAll('.webtoon-page'));
+    if (pages.length === 0) {
+        hideLoupe();
+        return;
+    }
+
+    const loupeSize = 120;
+    const zoom = 2.5; // 2.5배 확대
+    const srcRadius = (loupeSize / zoom) / 2; // 샘플링 반경 (24px)
+
+    captureLoupeCtx.imageSmoothingEnabled = false;
+    captureLoupeCtx.clearRect(0, 0, loupeSize, loupeSize);
+
+    // 기본 배경 어둡게 채우기
+    captureLoupeCtx.fillStyle = "#1e1e1e";
+    captureLoupeCtx.fillRect(0, 0, loupeSize, loupeSize);
+
+    const sampleLeft = targetX - srcRadius;
+    const sampleRight = targetX + srcRadius;
+    const sampleTop = targetY - srcRadius;
+    const sampleBottom = targetY + srcRadius;
+
+    for (const page of pages) {
+        const img = page.querySelector('.viewer-image');
+        if (!img || !img.naturalWidth || !img.offsetWidth) continue;
+        const r = img.getBoundingClientRect();
+
+        // 돋보기 샘플링 영역과 이미지 바운딩 교차 검사
+        if (sampleRight > r.left && sampleLeft < r.right && sampleBottom > r.top && sampleTop < r.bottom) {
+            const scaleX = img.naturalWidth / img.offsetWidth;
+            const scaleY = img.naturalHeight / img.offsetHeight;
+
+            // 교차 영역
+            const intersectLeft = Math.max(sampleLeft, r.left);
+            const intersectRight = Math.min(sampleRight, r.right);
+            const intersectTop = Math.max(sampleTop, r.top);
+            const intersectBottom = Math.min(sampleBottom, r.bottom);
+
+            const srcX = (intersectLeft - r.left) * scaleX;
+            const srcY = (intersectTop - r.top) * scaleY;
+            const srcW = (intersectRight - intersectLeft) * scaleX;
+            const srcH = (intersectBottom - intersectTop) * scaleY;
+
+            const destX = (intersectLeft - sampleLeft) * zoom;
+            const destY = (intersectTop - sampleTop) * zoom;
+            const destW = (intersectRight - intersectLeft) * zoom;
+            const destH = (intersectBottom - intersectTop) * zoom;
+
+            try {
+                captureLoupeCtx.drawImage(img, srcX, srcY, srcW, srcH, destX, destY, destW, destH);
+            } catch (err) {}
+        }
+    }
+
+    // 스마트 위치 배치 (마우스 우상단 우선, 화면 이탈 방지)
+    let loupeLeft = targetX + 25;
+    let loupeTop = targetY - loupeSize - 20;
+
+    if (loupeLeft + loupeSize > window.innerWidth - 15) {
+        loupeLeft = targetX - loupeSize - 25;
+    }
+    if (loupeTop < 15) {
+        loupeTop = targetY + 25;
+    }
+
+    captureLoupe.style.left = `${Math.max(10, loupeLeft)}px`;
+    captureLoupe.style.top = `${Math.max(10, loupeTop)}px`;
+    captureLoupe.style.display = 'block';
+}
+
+function hideLoupe() {
+    if (captureLoupe) {
+        captureLoupe.style.display = 'none';
+    }
+}
+
+function getScrollOffset(targetContainer) {
+    if (isCompareMode && targetContainer) {
+        return {
+            x: targetContainer.scrollLeft,
+            y: targetContainer.scrollTop
+        };
+    }
+    return {
+        x: window.scrollX || window.pageXOffset || 0,
+        y: window.scrollY || window.pageYOffset || 0
+    };
+}
+
+function getImageBounds(targetContainer) {
+    const activeCont = targetContainer || activeDragContainer || (isCompareMode && containerRight && currentDragX >= containerRight.getBoundingClientRect().left ? containerRight : container) || document.body;
+    if (!activeCont) return { left: 0, right: window.innerWidth, top: 0, bottom: window.innerHeight };
+    const pages = Array.from(activeCont.querySelectorAll('.webtoon-page'));
+    if (pages.length === 0) {
+        return { left: 0, right: window.innerWidth, top: 0, bottom: window.innerHeight };
+    }
+    const pagesRects = pages.map(p => {
+        const img = p.querySelector('.viewer-image');
+        return img ? img.getBoundingClientRect() : p.getBoundingClientRect();
+    });
+    return {
+        left: Math.min(...pagesRects.map(r => r.left)),
+        right: Math.max(...pagesRects.map(r => r.right)),
+        top: Math.min(...pagesRects.map(r => r.top)),
+        bottom: Math.max(...pagesRects.map(r => r.bottom))
+    };
+}
 
 function updateSelectionBox() {
-    if (!isSelecting) return;
+    if (!isSelecting && !(isPolyActive && polyStep === 'drag')) return;
     
     let currentScrollLeft = 0;
     let currentScrollTop = 0;
@@ -2589,31 +2822,13 @@ function updateSelectionBox() {
     const adjustedStartY = startY - deltaScrollY;
     
     // 웹툰 이미지 영역 기준 경계값 계산 및 제한 적용
-    const activeContainer = activeDragContainer || container;
-    let limitLeft = -Infinity;
-    let limitRight = Infinity;
-    let limitTop = -Infinity;
-    let limitBottom = Infinity;
+    const bounds = getImageBounds(activeDragContainer);
     
-    if (activeContainer) {
-        const pages = Array.from(activeContainer.querySelectorAll('.webtoon-page'));
-        if (pages.length > 0) {
-            const pagesRects = pages.map(p => {
-                const img = p.querySelector('.viewer-image');
-                return img ? img.getBoundingClientRect() : p.getBoundingClientRect();
-            });
-            limitLeft = Math.min(...pagesRects.map(r => r.left));
-            limitRight = Math.max(...pagesRects.map(r => r.right));
-            limitTop = Math.min(...pagesRects.map(r => r.top));
-            limitBottom = Math.max(...pagesRects.map(r => r.bottom));
-        }
-    }
+    const clampedAdjustedStartX = Math.max(bounds.left, Math.min(bounds.right, adjustedStartX));
+    const clampedAdjustedStartY = Math.max(bounds.top, Math.min(bounds.bottom, adjustedStartY));
     
-    const clampedAdjustedStartX = Math.max(limitLeft, Math.min(limitRight, adjustedStartX));
-    const clampedAdjustedStartY = Math.max(limitTop, Math.min(limitBottom, adjustedStartY));
-    
-    const clampedCurrentDragX = Math.max(limitLeft, Math.min(limitRight, currentDragX));
-    const clampedCurrentDragY = Math.max(limitTop, Math.min(limitBottom, currentDragY));
+    const clampedCurrentDragX = Math.max(bounds.left, Math.min(bounds.right, currentDragX));
+    const clampedCurrentDragY = Math.max(bounds.top, Math.min(bounds.bottom, currentDragY));
     
     const left = Math.min(clampedAdjustedStartX, clampedCurrentDragX);
     const top = Math.min(clampedAdjustedStartY, clampedCurrentDragY);
@@ -2633,7 +2848,7 @@ function startAutoScrollLoop() {
     const speed = 15;
     
     function tick() {
-        if (!isSelecting) {
+        if (!isSelecting && !(isPolyActive && (polyStep === 'drag' || activePolyHandle !== null))) {
             stopAutoScrollLoop();
             return;
         }
@@ -2661,7 +2876,23 @@ function startAutoScrollLoop() {
         }
         
         if (scrolled) {
-            updateSelectionBox();
+            if (isPolyActive && polyStep === 'adjust') {
+                if (activePolyHandle !== null) {
+                    const bounds = getImageBounds(activeDragContainer);
+                    const clampedX = Math.max(bounds.left, Math.min(bounds.right, currentDragX));
+                    const clampedY = Math.max(bounds.top, Math.min(bounds.bottom, currentDragY));
+                    const scroll = getScrollOffset(activeDragContainer);
+                    polyDocPoints[activePolyHandle] = {
+                        docX: clampedX + scroll.x,
+                        docY: clampedY + scroll.y
+                    };
+                    updateLoupe(clampedX, clampedY, activeDragContainer);
+                }
+                updatePolyOverlayUI();
+            } else {
+                updateSelectionBox();
+                updateLoupe(currentDragX, currentDragY, activeDragContainer);
+            }
         }
         
         autoScrollTimer = requestAnimationFrame(tick);
@@ -2677,14 +2908,129 @@ function stopAutoScrollLoop() {
     }
 }
 
+// [자유형 캡처 오버레이 및 툴바 업데이트]
+function updatePolyOverlayUI() {
+    if (!isPolyActive || polyDocPoints.length !== 4) return;
+
+    const scroll = getScrollOffset(activeDragContainer);
+    const screenPoints = polyDocPoints.map(p => ({
+        x: p.docX - scroll.x,
+        y: p.docY - scroll.y
+    }));
+
+    // SVG polygon points 업데이트
+    const ptsString = screenPoints.map(p => `${p.x},${p.y}`).join(' ');
+    if (polyPolygon) polyPolygon.setAttribute('points', ptsString);
+    if (polySvg) polySvg.style.display = 'block';
+
+    // 4개 핸들 위치 업데이트
+    screenPoints.forEach((p, idx) => {
+        const handle = polyHandles[idx];
+        if (handle) {
+            handle.style.left = `${p.x}px`;
+            handle.style.top = `${p.y}px`;
+            handle.style.display = 'block';
+        }
+    });
+
+    // 툴바 위치 업데이트 (4개 점 하단 중심)
+    if (polyToolbar) {
+        const maxY = Math.max(...screenPoints.map(p => p.y));
+        const minX = Math.min(...screenPoints.map(p => p.x));
+        const maxX = Math.max(...screenPoints.map(p => p.x));
+        const centerX = (minX + maxX) / 2;
+
+        const toolbarY = Math.min(window.innerHeight - 56, maxY + 20);
+        polyToolbar.style.left = `${Math.max(120, Math.min(window.innerWidth - 120, centerX))}px`;
+        polyToolbar.style.top = `${toolbarY}px`;
+        polyToolbar.style.display = 'flex';
+    }
+}
+
+// [자유형 캡처 취소 및 정리]
+function cleanUpPolyCapture() {
+    stopAutoScrollLoop();
+    hideLoupe();
+    isPolyActive = false;
+    polyStep = 'none';
+    polyDocPoints = [];
+    activePolyHandle = null;
+
+    if (selectionBox) selectionBox.style.display = 'none';
+    if (polySvg) polySvg.style.display = 'none';
+    polyHandles.forEach(h => { if (h) h.style.display = 'none'; });
+    if (polyToolbar) polyToolbar.style.display = 'none';
+
+    // 캡처 완료/취소 시 원래 레이아웃으로 부드럽게 복원 (스크롤 앵커 동기화)
+    if (isCompareMode) {
+        const leftAnchor = calculateCompareAnchor('left');
+        const rightAnchor = calculateCompareAnchor('right');
+        document.body.classList.add('selecting-transition');
+        document.body.classList.remove('selecting', 'poly-selecting');
+        animateCompareAnchor(leftAnchor, rightAnchor, 150);
+        setTimeout(() => { document.body.classList.remove('selecting-transition'); }, 150);
+    } else {
+        const anchor = calculateRealTimeAnchor();
+        document.body.classList.add('selecting-transition');
+        document.body.classList.remove('selecting', 'poly-selecting');
+        animateScrollAnchor(anchor, 150);
+        setTimeout(() => { document.body.classList.remove('selecting-transition'); }, 150);
+    }
+}
+
+function cancelPolyCapture() {
+    if (!isPolyActive) return;
+    cleanUpPolyCapture();
+    showToast("자유형 캡처가 취소되었습니다.", "x");
+}
+
+// [자유형 캡처 완료 실행]
+async function confirmPolyCapture() {
+    if (!isPolyActive || polyDocPoints.length !== 4) return;
+
+    const scroll = getScrollOffset(activeDragContainer);
+    const screenPoints = polyDocPoints.map(p => ({
+        x: p.docX - scroll.x,
+        y: p.docY - scroll.y
+    }));
+
+    // 축소 상태의 정확한 좌표계에서 먼저 고화질 캡처 수행 후 복원
+    await capturePolygonHighRes(screenPoints, "Poly");
+    cleanUpPolyCapture();
+}
+
+// 툴바 버튼 이벤트 연결
+if (btnPolyConfirm) btnPolyConfirm.onclick = (e) => { e.stopPropagation(); confirmPolyCapture(); };
+if (btnPolyCancel) btnPolyCancel.onclick = (e) => { e.stopPropagation(); cancelPolyCapture(); };
+
+// 각 핸들 드래그 시작 이벤트
+polyHandles.forEach((handle, idx) => {
+    if (!handle) return;
+    handle.addEventListener('mousedown', (e) => {
+        if (!isPolyActive || polyStep !== 'adjust') return;
+        e.preventDefault();
+        e.stopPropagation();
+        activePolyHandle = idx;
+        handle.classList.add('dragging');
+        const bounds = getImageBounds(activeDragContainer);
+        const clampedX = Math.max(bounds.left, Math.min(bounds.right, e.clientX));
+        const clampedY = Math.max(bounds.top, Math.min(bounds.bottom, e.clientY));
+        currentDragX = clampedX;
+        currentDragY = clampedY;
+        updateLoupe(clampedX, clampedY, activeDragContainer);
+        startAutoScrollLoop();
+    });
+});
+
+// 직사각형 영역 캡처 버튼 이벤트
 document.getElementById('btn-crop-capture').onclick = async () => {
     if (!hasLoadedImages()) {
         showToast("캡처를 수행할 수 없습니다.", "alert");
         return;
     }
+    cleanUpPolyCapture();
 
     if (isCompareMode) {
-        // 비교보기 모드: 이미지 축소 직전 좌/우 화면의 중앙 앵커를 계산합니다.
         const leftAnchor = calculateCompareAnchor('left');
         const rightAnchor = calculateCompareAnchor('right');
 
@@ -2694,41 +3040,79 @@ document.getElementById('btn-crop-capture').onclick = async () => {
         settingsPanel.classList.remove('show');
         showToast("마우스로 드래그하여 영역을 선택하세요. (ESC: 취소)", "camera");
 
-        // 150ms 트랜지션 동안 매 프레임 앵커 기반 스크롤 동기화 수행
         animateCompareAnchor(leftAnchor, rightAnchor, 150);
-
-        setTimeout(() => {
-            document.body.classList.remove('selecting-transition');
-        }, 150);
+        setTimeout(() => { document.body.classList.remove('selecting-transition'); }, 150);
         return;
     }
 
-    // 진입 전 앵커를 구하여 이미지 축소 후 스크롤을 유지하도록 설정
     const anchor = calculateRealTimeAnchor();
-
-    // 트랜지션 효과 적용 클래스 추가
     document.body.classList.add('selecting-transition');
     isSelecting = true;
-    // 마우스 커서가 십자 모양(+)으로 바뀌도록 클래스 추가
     document.body.classList.add('selecting');
-    // 설정 패널 닫기 (캡처 방해 방지)
     settingsPanel.classList.remove('show');
-    
-    // 가이드 안내 토스트 팝업 띄우기
     showToast("마우스로 드래그하여 영역을 선택하세요. (ESC: 취소)", "camera");
 
-    // 애니메이션 프레임마다 스크롤을 앵커에 정교하게 동기화
     animateScrollAnchor(anchor, 150);
-
-    setTimeout(() => {
-        document.body.classList.remove('selecting-transition');
-    }, 150);
+    setTimeout(() => { document.body.classList.remove('selecting-transition'); }, 150);
 };
 
+// [추가] 자유형 4점 영역 캡처 버튼 이벤트
+const btnPolyCapture = document.getElementById('btn-poly-capture');
+if (btnPolyCapture) {
+    btnPolyCapture.onclick = async () => {
+        if (!hasLoadedImages()) {
+            showToast("캡처를 수행할 수 없습니다.", "alert");
+            return;
+        }
+
+        if (isSelecting) {
+            isSelecting = false;
+            if (selectionBox) selectionBox.style.display = 'none';
+        }
+
+        cleanUpPolyCapture();
+        isPolyActive = true;
+        polyStep = 'drag';
+
+        if (isCompareMode) {
+            const leftAnchor = calculateCompareAnchor('left');
+            const rightAnchor = calculateCompareAnchor('right');
+
+            document.body.classList.add('selecting-transition');
+            document.body.classList.add('selecting', 'poly-selecting');
+            settingsPanel.classList.remove('show');
+            showToast("마우스로 드래그하여 기본 영역을 만드세요. (ESC: 취소)", "camera");
+
+            animateCompareAnchor(leftAnchor, rightAnchor, 150);
+            setTimeout(() => { document.body.classList.remove('selecting-transition'); }, 150);
+            return;
+        }
+
+        const anchor = calculateRealTimeAnchor();
+        document.body.classList.add('selecting-transition');
+        document.body.classList.add('selecting', 'poly-selecting');
+        settingsPanel.classList.remove('show');
+        showToast("마우스로 드래그하여 기본 영역을 만드세요. (ESC: 취소)", "camera");
+
+        animateScrollAnchor(anchor, 150);
+        setTimeout(() => { document.body.classList.remove('selecting-transition'); }, 150);
+    };
+}
+
 window.addEventListener('mousedown', (e) => {
-    if (!isSelecting) return;
+    // 툴바 내부 클릭 시 캡처 드래그 취소 방지
+    if (polyToolbar && (polyToolbar === e.target || polyToolbar.contains(e.target))) {
+        return;
+    }
+
+    // 핸들 위에서 mousedown인 경우 핸들러에서 처리
+    if (e.target.classList && e.target.classList.contains('poly-handle')) {
+        return;
+    }
+
+    if (!isSelecting && !(isPolyActive && polyStep === 'drag')) return;
     
-    // [중요] 브라우저의 기본 드래그/선택 동작을 완전히 막습니다.
+    // 브라우저의 기본 드래그/선택 동작을 완전히 방지
     e.preventDefault(); 
 
     startX = e.clientX;
@@ -2757,25 +3141,100 @@ window.addEventListener('mousedown', (e) => {
 });
 
 window.addEventListener('mousemove', (e) => {
-    if (!isSelecting || e.buttons !== 1) return;
-    
     currentDragX = e.clientX;
     currentDragY = e.clientY;
-    
-    updateSelectionBox();
+
+    // 1. 자유형 조절 모드에서 핸들 드래그 중인 경우
+    if (isPolyActive && polyStep === 'adjust' && activePolyHandle !== null) {
+        const bounds = getImageBounds(activeDragContainer);
+        const clampedX = Math.max(bounds.left, Math.min(bounds.right, e.clientX));
+        const clampedY = Math.max(bounds.top, Math.min(bounds.bottom, e.clientY));
+        const scroll = getScrollOffset(activeDragContainer);
+        polyDocPoints[activePolyHandle] = {
+            docX: clampedX + scroll.x,
+            docY: clampedY + scroll.y
+        };
+        updatePolyOverlayUI();
+        updateLoupe(clampedX, clampedY, activeDragContainer);
+        return;
+    }
+
+    // 2. 영역 지정 캡처 또는 자유형 기본 드래그 단계인 경우
+    if (isSelecting || (isPolyActive && polyStep === 'drag')) {
+        if (e.buttons === 1) {
+            // 마우스 클릭 드래그 중인 경우 (영역 박스 업데이트 및 돋보기)
+            updateSelectionBox();
+            updateLoupe(currentDragX, currentDragY, activeDragContainer);
+        } else {
+            // 마우스 클릭 전 이동 중인 경우 (시작점 사전 조준용 돋보기)
+            updateLoupe(currentDragX, currentDragY, activeDragContainer);
+        }
+    }
+});
+
+window.addEventListener('mouseleave', () => {
+    if (isSelecting || isPolyActive) {
+        hideLoupe();
+    }
 });
 
 window.addEventListener('mouseup', async (e) => {
-    if (!isSelecting) return;
-    stopAutoScrollLoop();
-    const rect = selectionBox.getBoundingClientRect();
-    await endCropCapture(rect);
+    // 1. 자유형 조절 모드 핸들 드래그 종료
+    if (isPolyActive && polyStep === 'adjust' && activePolyHandle !== null) {
+        polyHandles.forEach(h => { if (h) h.classList.remove('dragging'); });
+        activePolyHandle = null;
+        stopAutoScrollLoop();
+        hideLoupe();
+        return;
+    }
+
+    // 2. 자유형 드래그 단계 완료 -> 모서리 조절 단계로 전환
+    if (isPolyActive && polyStep === 'drag') {
+        stopAutoScrollLoop();
+        hideLoupe();
+        const rect = selectionBox.getBoundingClientRect();
+        selectionBox.style.display = 'none';
+
+        if (rect && rect.width >= 15 && rect.height >= 15) {
+            const bounds = getImageBounds(activeDragContainer);
+            const clampedLeft = Math.max(bounds.left, Math.min(bounds.right, rect.left));
+            const clampedRight = Math.max(bounds.left, Math.min(bounds.right, rect.right));
+            const clampedTop = Math.max(bounds.top, Math.min(bounds.bottom, rect.top));
+            const clampedBottom = Math.max(bounds.top, Math.min(bounds.bottom, rect.bottom));
+
+            const scroll = getScrollOffset(activeDragContainer);
+            // 4개 꼭짓점 문서 절대 좌표 생성 (0: 좌상, 1: 우상, 2: 우하, 3: 좌하)
+            polyDocPoints = [
+                { docX: clampedLeft + scroll.x, docY: clampedTop + scroll.y },
+                { docX: clampedRight + scroll.x, docY: clampedTop + scroll.y },
+                { docX: clampedRight + scroll.x, docY: clampedBottom + scroll.y },
+                { docX: clampedLeft + scroll.x, docY: clampedBottom + scroll.y }
+            ];
+
+            polyStep = 'adjust';
+            updatePolyOverlayUI();
+            showToast("모서리 핸들을 잡고 프레임에 맞춘 뒤 Enter를 누르세요.", "camera");
+        } else {
+            cancelPolyCapture();
+        }
+        return;
+    }
+
+    // 3. 기존 직사각형 영역 캡처 완료
+    if (isSelecting) {
+        stopAutoScrollLoop();
+        hideLoupe();
+        const rect = selectionBox.getBoundingClientRect();
+        await endCropCapture(rect);
+    }
 });
 
-// 스크롤 시 선택 영역 실시간 업데이트 (마우스 휠 스크롤 대응)
+// 스크롤 시 선택 영역 및 자유형 오버레이 실시간 업데이트 (마우스 휠 스크롤 대응)
 window.addEventListener('scroll', () => {
-    if (isSelecting) {
+    if (isSelecting || (isPolyActive && polyStep === 'drag')) {
         updateSelectionBox();
+    } else if (isPolyActive && polyStep === 'adjust') {
+        updatePolyOverlayUI();
     }
 }, true);
 
@@ -2783,6 +3242,7 @@ window.addEventListener('scroll', () => {
 async function endCropCapture(rect) {
     if (!isSelecting) return;
     stopAutoScrollLoop();
+    hideLoupe();
     
     if (isCompareMode) {
         // 비교보기 모드: 이미지 복원 직전 좌/우 화면의 중앙 앵커를 계산합니다.
@@ -2879,7 +3339,7 @@ async function endCropCapture(rect) {
 }
 
 /**
- * [핵심] 고화질 원본 해상도 캡처 공통 함수
+ * [핵심] 고화질 원본 해상도 캡처 공통 함수 (직사각형)
  * @param {Object} rect - 캡처할 영역 (화면 좌표 기준: left, top, right, bottom, width, height)
  * @param {String} type - 파일명에 포함할 타입 (Pure, Crop 등)
  */
@@ -2892,7 +3352,6 @@ async function captureHighRes(rect, type) {
         [menuBtn, pageIndicator].forEach(el => el.style.visibility = 'hidden');
 
         // 비교 모드에서는 rect(선택 영역)가 속한 컨테이너만을 대상으로 제한합니다.
-        // document.querySelectorAll로 전체를 잡으면 양쪽 컨테이너의 페이지가 뒤섞여 좌표가 틀어집니다.
         let captureContainer;
         if (isCompareMode && containerRight) {
             const rightBounds = containerRight.getBoundingClientRect();
@@ -2905,7 +3364,6 @@ async function captureHighRes(rect, type) {
         const pages = Array.from(captureContainer.querySelectorAll('.webtoon-page'));
         if (pages.length === 0) throw new Error("이미지가 없습니다.");
 
-        // [A] 축소된 여백을 갖는 부모 div 대신 실제 [img.viewer-image] 들의 bounding rect를 연산합니다.
         const pagesRects = pages.map(p => {
             const img = p.querySelector('.viewer-image');
             return img ? img.getBoundingClientRect() : p.getBoundingClientRect();
@@ -2938,7 +3396,6 @@ async function captureHighRes(rect, type) {
         }) || pages[0];
         
         const firstVisibleImg = firstVisiblePage.querySelector('.viewer-image');
-        // 부모 offsetWidth 대신 실제 img의 offsetWidth 를 분모로 사용하여 축소 배율을 정확히 복원합니다!
         const scaleRatio = firstVisibleImg ? (firstVisibleImg.naturalWidth / firstVisibleImg.offsetWidth) : 1;
         
         // 3. 캔버스 준비
@@ -2950,7 +3407,7 @@ async function captureHighRes(rect, type) {
         // 4. 원본 데이터 그리기
         for (let i = 0; i < pages.length; i++) {
             const page = pages[i];
-            const pRect = pagesRects[i]; // 실제 이미지 바운딩
+            const pRect = pagesRects[i];
             const intersectTop = Math.max(finalTop, pRect.top);
             const intersectBottom = Math.min(finalBottom, pRect.bottom);
             
@@ -2958,10 +3415,8 @@ async function captureHighRes(rect, type) {
                 const imgEl = page.querySelector('.viewer-image');
                 if (!imgEl) continue;
 
-                // 이미지 내 소스 시작 X: 선택 영역 left와 이미지 left 차이 (0 이상)
                 const relX = Math.max(0, finalLeft - pRect.left);
                 const relY = intersectTop - pRect.top;
-                // 이 이미지 상에서의 실제 교차 폭 계산
                 const clampedLeft = Math.max(finalLeft, pRect.left);
                 const clampedRight = Math.min(finalRight, pRect.right);
                 const relW = clampedRight - clampedLeft;
@@ -2969,7 +3424,6 @@ async function captureHighRes(rect, type) {
 
                 if (relW <= 0) continue;
 
-                // 비율 환산 시에도 부모가 아닌 실제 img의 크기를 기준으로 나눕니다.
                 const scaleX = imgEl.naturalWidth / imgEl.offsetWidth;
                 const scaleY = imgEl.naturalHeight / imgEl.offsetHeight;
                 const srcX = relX * scaleX;
@@ -2977,11 +3431,9 @@ async function captureHighRes(rect, type) {
                 const srcW = relW * scaleX;
                 const srcH = relH * scaleY;
 
-                // 캔버스 X 시작: 이 이미지가 선택 영역 내에서 시작하는 X 위치
                 const destX = Math.round(Math.max(0, pRect.left - finalLeft) * scaleRatio);
                 const destY = Math.round((intersectTop - finalTop) * scaleRatio);
                 const destW = Math.round(relW * scaleRatio);
-                // 정수 픽셀 단위로 경계를 일치시켜 빈틈과 이미지 어긋남을 동시에 해결합니다.
                 const destH = Math.round((intersectBottom - finalTop) * scaleRatio) - destY;
 
                 ctx.drawImage(imgEl, srcX, srcY, srcW, srcH, destX, destY, destW, destH);
@@ -3018,13 +3470,174 @@ async function captureHighRes(rect, type) {
     }
 }
 
+/**
+ * [추가] 자유형 4점 다각형 고화질 원본 해상도 캡처 함수
+ * @param {Array<{x: number, y: number}>} screenPoints - 화면 좌표 기준 4개 꼭짓점
+ * @param {String} type - 파일명에 포함할 타입 (Poly)
+ */
+async function capturePolygonHighRes(screenPoints, type = "Poly") {
+    const btn = document.getElementById('btn-poly-capture') || document.getElementById('btn-crop-capture');
+    const originalBtnHTML = btn ? btn.innerHTML : "";
+    
+    try {
+        if (btn) btn.innerHTML = `${ICON_MAP.loader}<span>자유형 고화질 추출 중...</span>`;
+        [menuBtn, pageIndicator].forEach(el => el.style.visibility = 'hidden');
+
+        const minX = Math.min(...screenPoints.map(p => p.x));
+        const maxX = Math.max(...screenPoints.map(p => p.x));
+        const minY = Math.min(...screenPoints.map(p => p.y));
+        const maxY = Math.max(...screenPoints.map(p => p.y));
+
+        let captureContainer;
+        if (isCompareMode && containerRight) {
+            const rightBounds = containerRight.getBoundingClientRect();
+            const rectCenter = (minX + maxX) / 2;
+            captureContainer = (rectCenter >= rightBounds.left) ? containerRight : container;
+        } else {
+            captureContainer = container || document.body;
+        }
+
+        const pages = Array.from(captureContainer.querySelectorAll('.webtoon-page'));
+        if (pages.length === 0) throw new Error("이미지가 없습니다.");
+
+        const pagesRects = pages.map(p => {
+            const img = p.querySelector('.viewer-image');
+            return img ? img.getBoundingClientRect() : p.getBoundingClientRect();
+        });
+        const minLeft = Math.min(...pagesRects.map(r => r.left));
+        const maxRight = Math.max(...pagesRects.map(r => r.right));
+        const minTop = Math.min(...pagesRects.map(r => r.top));
+        const maxBottom = Math.max(...pagesRects.map(r => r.bottom));
+
+        const finalLeft = Math.max(minX, minLeft);
+        const finalRight = Math.min(maxX, maxRight);
+        const finalTop = Math.max(minY, minTop);
+        const finalBottom = Math.min(maxY, maxBottom);
+        const finalWidth = finalRight - finalLeft;
+        const finalHeight = finalBottom - finalTop;
+
+        if (finalWidth <= 0 || finalHeight <= 0) {
+            showToast("캡처할 영역이 이미지 바깥입니다.", "alert");
+            return;
+        }
+
+        const firstVisiblePage = pages.find(p => {
+            const img = p.querySelector('.viewer-image');
+            if (!img) return false;
+            const r = img.getBoundingClientRect();
+            return r.bottom > finalTop && r.top < finalBottom;
+        }) || pages[0];
+        
+        const firstVisibleImg = firstVisiblePage.querySelector('.viewer-image');
+        const scaleRatio = firstVisibleImg ? (firstVisibleImg.naturalWidth / firstVisibleImg.offsetWidth) : 1;
+
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(finalWidth * scaleRatio);
+        canvas.height = Math.round(finalHeight * scaleRatio);
+        const ctx = canvas.getContext('2d');
+
+        // [핵심] 4개 꼭짓점 다각형 클리핑 패스 적용 (외곽은 투명하게 처리됨)
+        ctx.save();
+        ctx.beginPath();
+        screenPoints.forEach((p, idx) => {
+            const cx = (p.x - finalLeft) * scaleRatio;
+            const cy = (p.y - finalTop) * scaleRatio;
+            if (idx === 0) {
+                ctx.moveTo(cx, cy);
+            } else {
+                ctx.lineTo(cx, cy);
+            }
+        });
+        ctx.closePath();
+        ctx.clip();
+
+        // 클리핑 영역 내에 고화질 웹툰 이미지 렌더링
+        for (let i = 0; i < pages.length; i++) {
+            const page = pages[i];
+            const pRect = pagesRects[i];
+            const intersectTop = Math.max(finalTop, pRect.top);
+            const intersectBottom = Math.min(finalBottom, pRect.bottom);
+            
+            if (intersectTop < intersectBottom) {
+                const imgEl = page.querySelector('.viewer-image');
+                if (!imgEl) continue;
+
+                const relX = Math.max(0, finalLeft - pRect.left);
+                const relY = intersectTop - pRect.top;
+                const clampedLeft = Math.max(finalLeft, pRect.left);
+                const clampedRight = Math.min(finalRight, pRect.right);
+                const relW = clampedRight - clampedLeft;
+                const relH = intersectBottom - intersectTop;
+
+                if (relW <= 0) continue;
+
+                const scaleX = imgEl.naturalWidth / imgEl.offsetWidth;
+                const scaleY = imgEl.naturalHeight / imgEl.offsetHeight;
+                const srcX = relX * scaleX;
+                const srcY = relY * scaleY;
+                const srcW = relW * scaleX;
+                const srcH = relH * scaleY;
+
+                const destX = Math.round(Math.max(0, pRect.left - finalLeft) * scaleRatio);
+                const destY = Math.round((intersectTop - finalTop) * scaleRatio);
+                const destW = Math.round(relW * scaleRatio);
+                const destH = Math.round((intersectBottom - finalTop) * scaleRatio) - destY;
+
+                ctx.drawImage(imgEl, srcX, srcY, srcW, srcH, destX, destY, destW, destH);
+            }
+        }
+        ctx.restore();
+
+        const format = currentCaptureFormat || "png";
+        const mimeType = format === "jpeg" ? "image/jpeg" : `image/${format}`;
+        const dataUrl = canvas.toDataURL(mimeType);
+        
+        const now = new Date();
+        const timestamp = now.toISOString().slice(0,10).replace(/-/g,'') + "_" + 
+                          now.getHours().toString().padStart(2,'0') + 
+                          now.getMinutes().toString().padStart(2,'0') + 
+                          now.getSeconds().toString().padStart(2,'0');
+        
+        const fileExt = format === "jpeg" ? "jpg" : format;
+        const filename = `Webtoon_${type}_${timestamp}.${fileExt}`;
+
+        if (window.pywebview && window.pywebview.api) {
+            const success = await window.pywebview.api.save_image(dataUrl, filename);
+            if (success) {
+                showToast("자유형 캡쳐 완료!", "camera");
+            } else {
+                showToast("저장에 실패했습니다.", "x");
+            }
+        }
+    } catch (err) {
+        console.error("자유형 고화질 캡처 실패:", err);
+        showToast("캡처 중 오류가 발생했습니다.", "alert");
+    } finally {
+        if (btn) btn.innerHTML = originalBtnHTML;
+        [menuBtn, pageIndicator].forEach(el => el.style.visibility = 'visible');
+    }
+}
+
 window.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && isSelecting) {
-        stopAutoScrollLoop();
-        isSelecting = false;
-        document.body.classList.remove('selecting');
-        if (selectionBox) selectionBox.style.display = 'none';
-        showToast("캡처가 취소되었습니다.", "x");
+    // 자유형 캡처 중 Enter 키로 캡처 완료
+    if (e.key === 'Enter' && isPolyActive && polyStep === 'adjust') {
+        e.preventDefault();
+        confirmPolyCapture();
+        return;
+    }
+
+    // Escape 키로 캡처 취소
+    if (e.key === 'Escape') {
+        hideLoupe();
+        if (isPolyActive) {
+            cancelPolyCapture();
+        } else if (isSelecting) {
+            stopAutoScrollLoop();
+            isSelecting = false;
+            document.body.classList.remove('selecting');
+            if (selectionBox) selectionBox.style.display = 'none';
+            showToast("캡처가 취소되었습니다.", "x");
+        }
     }
 });
 
@@ -3426,6 +4039,16 @@ document.getElementById('ctx-capture-crop').onclick = (e) => {
     const target = document.getElementById('btn-crop-capture');
     if (target) target.click();
 };
+
+const ctxCapturePoly = document.getElementById('ctx-capture-poly');
+if (ctxCapturePoly) {
+    ctxCapturePoly.onclick = (e) => {
+        e.stopPropagation();
+        contextMenu.style.display = 'none';
+        const target = document.getElementById('btn-poly-capture');
+        if (target) target.click();
+    };
+}
 
 document.getElementById('ctx-open-menu').onclick = (e) => {
     e.stopPropagation();

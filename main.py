@@ -4,14 +4,13 @@ import base64
 import json
 import sys
 import threading
-import bottle
 import urllib.parse
 import urllib.request
 import tempfile
 import subprocess
-from PIL import Image
+import zipfile
 
-APP_VERSION = "3.0"
+APP_VERSION = "3.2"
 IS_MAC = (sys.platform == 'darwin')
 
 # macOS 전용 라이브러리 (PySide6)
@@ -36,8 +35,9 @@ else:
     # Windows / 기타 OS: pywebview
     try:
         import webview
-    except ImportError:
-        pass
+    except ImportError as e:
+        print(f"[ERROR] pywebview 모듈을 불러올 수 없습니다: {e}")
+        raise e
 
 
 # PyInstaller 빌드 시 리소스 경로 처리를 위한 함수
@@ -79,7 +79,8 @@ def load_all_settings():
             "stepScroll": True,
             "stepAmount": 100,
             "minimapEnabled": True,
-            "captureDir": ""
+            "captureDir": "",
+            "captureLoupeEnabled": True
         },
         "resume": {}
     }
@@ -145,6 +146,112 @@ def sync_window_settings_data(width, height, x, y):
 
 
 SUPPORTED_IMAGE_EXTS = ('.jpg', '.jpeg', '.png', '.webp', '.psd', '.gif', '.bmp', '.zip')
+
+# PSD 디코딩 전용 헬퍼 함수 (psd-tools 우선 시도 후 Pillow fallback)
+def decode_psd_to_png_base64(path_or_bytes):
+    # 1. psd-tools 시도 (포토샵/클튜의 복잡한 레이어, 호환성 미체크 PSD, 16bit, 마스크 완벽 지원)
+    try:
+        import psd_tools
+        if isinstance(path_or_bytes, bytes):
+            psd = psd_tools.PSDImage.open(io.BytesIO(path_or_bytes))
+        else:
+            psd = psd_tools.PSDImage.open(path_or_bytes)
+        
+        pil_img = psd.composite()
+        if pil_img:
+            if pil_img.mode in ('CMYK', 'P'):
+                pil_img = pil_img.convert('RGB')
+            elif pil_img.mode not in ('RGB', 'RGBA'):
+                pil_img = pil_img.convert('RGBA')
+            
+            buf = io.BytesIO()
+            pil_img.save(buf, format='PNG')
+            encoded = base64.b64encode(buf.getvalue()).decode('utf-8')
+            return f"data:image/png;base64,{encoded}"
+    except Exception as e_psd:
+        print(f"[PSD_TOOLS_INFO] psd-tools 파싱 실패, Pillow fallback 시도: {e_psd}")
+
+    # 2. Pillow PsdImagePlugin fallback 시도
+    try:
+        from PIL import Image, PsdImagePlugin
+        if isinstance(path_or_bytes, bytes):
+            img = Image.open(io.BytesIO(path_or_bytes))
+        else:
+            img = Image.open(path_or_bytes)
+        
+        try:
+            img.seek(0)
+        except Exception:
+            pass
+        img.load()
+
+        if img.mode == 'CMYK':
+            img = img.convert('RGB')
+        elif img.mode in ('I;16', 'I;16B', 'I;16L', 'I'):
+            img = img.point(lambda i: i * (1 / 256)).convert('L')
+        elif img.mode in ('P', '1', 'L', 'LA'):
+            img = img.convert('RGBA')
+        elif img.mode not in ('RGB', 'RGBA'):
+            img = img.convert('RGBA')
+
+        buf = io.BytesIO()
+        img.save(buf, format='PNG')
+        encoded = base64.b64encode(buf.getvalue()).decode('utf-8')
+        return f"data:image/png;base64,{encoded}"
+    except Exception as e_pil:
+        print(f"[PIL_ERR] PSD 파싱 최종 실패: {e_pil}")
+        return None
+
+
+def setup_cocoa_standard_menu():
+    """macOS 시스템 레벨에서 Cmd+A, Cmd+C, Cmd+V, Cmd+Z 등이 파일 다이얼로그 및 입력창에 전달되도록 Cocoa 메뉴 등록"""
+    if not IS_MAC:
+        return
+    try:
+        import AppKit
+        import objc
+
+        app = AppKit.NSApplication.sharedApplication()
+        main_menu = app.mainMenu()
+        if not main_menu:
+            main_menu = AppKit.NSMenu.alloc().init()
+            app.setMainMenu_(main_menu)
+
+        # 기존 Edit/편집 메뉴 확인
+        edit_item = None
+        for item in main_menu.itemArray():
+            if item.title() in ('Edit', '편집') or (item.hasSubmenu() and item.submenu().title() in ('Edit', '편집')):
+                edit_item = item
+                break
+
+        if not edit_item:
+            edit_item = AppKit.NSMenuItem.alloc().initWithTitle_action_keyEquivalent_('편집', None, '')
+            main_menu.addItem_(edit_item)
+
+        edit_menu = AppKit.NSMenu.alloc().initWithTitle_('편집')
+
+        # 표준 Cocoa 셀렉터 매핑 (macOS 네이티브 파일 다이얼로그에서 Cmd+A, Cmd+C 등 필수)
+        items = [
+            ('실행 취소', objc.selector(None, selector=b'undo:', signature=b'v@:@'), 'z'),
+            ('다시 실행', objc.selector(None, selector=b'redo:', signature=b'v@:@'), 'Z'),
+            (None, None, None),
+            ('오려두기', objc.selector(None, selector=b'cut:', signature=b'v@:@'), 'x'),
+            ('복사', objc.selector(None, selector=b'copy:', signature=b'v@:@'), 'c'),
+            ('붙여넣기', objc.selector(None, selector=b'paste:', signature=b'v@:@'), 'v'),
+            ('모두 선택', objc.selector(None, selector=b'selectAll:', signature=b'v@:@'), 'a'),
+        ]
+
+        for title, sel, key in items:
+            if title is None:
+                edit_menu.addItem_(AppKit.NSMenuItem.separatorItem())
+            else:
+                item = AppKit.NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(title, sel, key)
+                edit_menu.addItem_(item)
+
+        edit_item.setSubmenu_(edit_menu)
+    except Exception as e:
+        print(f"[COCOA_MENU_WARN] Cocoa Edit 메뉴 설정 실패: {e}")
+
 
 # 공통 비즈니스 로직 API 클래스
 class ViewerAPI:
@@ -217,17 +324,36 @@ class ViewerAPI:
 
     def open_folder_dialog(self):
         if IS_MAC:
-            folder_path = QFileDialog.getExistingDirectory(
-                self._dialog_parent, 
-                "폴더 선택", 
-                os.path.expanduser("~")
-            )
-            if folder_path:
-                folder_path = os.path.normpath(folder_path).replace("\\", "/")
-                files = [f for f in os.listdir(folder_path) if f.lower().endswith(SUPPORTED_IMAGE_EXTS)]
-                files.sort()
-                return {"folderPath": folder_path, "files": files}
-            return None
+            setup_cocoa_standard_menu()
+            try:
+                import AppKit
+                panel = AppKit.NSOpenPanel.openPanel()
+                panel.setTitle_("웹툰 폴더 선택")
+                panel.setMessage_("열람할 웹툰 이미지가 들어있는 폴더를 선택하세요.")
+                panel.setPrompt_("선택")
+                panel.setAllowsMultipleSelection_(False)
+                panel.setCanChooseFiles_(False)
+                panel.setCanChooseDirectories_(True)
+                panel.setResolvesAliases_(True)
+                
+                AppKit.NSApp.activateIgnoringOtherApps_(True)
+                if panel.runModal() == AppKit.NSModalResponseOK:
+                    url = panel.URL()
+                    if url:
+                        folder_path = os.path.normpath(str(url.path())).replace("\\", "/")
+                        files = [f for f in os.listdir(folder_path) if f.lower().endswith(SUPPORTED_IMAGE_EXTS)]
+                        files.sort()
+                        return {"folderPath": folder_path, "files": files}
+                return None
+            except Exception as e:
+                print(f"[MAC_OPEN_FOLDER_ERR] AppKit 폴더 다이얼로그 오류: {e}")
+                folder_path = QFileDialog.getExistingDirectory(None, "폴더 선택", os.path.expanduser("~"))
+                if folder_path:
+                    folder_path = os.path.normpath(folder_path).replace("\\", "/")
+                    files = [f for f in os.listdir(folder_path) if f.lower().endswith(SUPPORTED_IMAGE_EXTS)]
+                    files.sort()
+                    return {"folderPath": folder_path, "files": files}
+                return None
         else:
             result = self._window.create_file_dialog(webview.FileDialog.FOLDER)
             if result:
@@ -238,40 +364,101 @@ class ViewerAPI:
             return None
 
     def open_file_dialog(self):
+        def _process_selected_files(file_list):
+            if not file_list:
+                return None
+            # 단일 압축 파일(.zip, .cbz)인 경우 내부 이미지 목록 파싱
+            if len(file_list) == 1:
+                single_path = os.path.normpath(file_list[0]).replace("\\", "/")
+                ext = single_path.split('.')[-1].lower()
+                if ext in ('zip', 'cbz'):
+                    try:
+                        import zipfile
+                        with zipfile.ZipFile(single_path, 'r') as zf:
+                            image_names = [
+                                n for n in zf.namelist()
+                                if not n.endswith('/') and not n.startswith('__MACOSX/') and
+                                n.lower().endswith(SUPPORTED_IMAGE_EXTS) and not n.lower().endswith(('.zip', '.cbz'))
+                            ]
+                            image_names.sort()
+                            if image_names:
+                                return {
+                                    "isZip": True,
+                                    "zipPath": single_path,
+                                    "folderPath": single_path,
+                                    "files": image_names
+                                }
+                    except Exception as zip_err:
+                        print(f"ZIP 파싱 실패: {zip_err}")
+
+            folder_path = os.path.normpath(os.path.dirname(file_list[0])).replace("\\", "/")
+            file_names = [os.path.basename(f) for f in file_list]
+            return {"folderPath": folder_path, "files": file_names}
+
         if IS_MAC:
-            files, _ = QFileDialog.getOpenFileNames(
-                self._dialog_parent,
-                "이미지 / ZIP 파일 선택",
-                os.path.expanduser("~"),
-                "Image & Archive Files (*.jpg *.jpeg *.png *.webp *.psd *.gif *.bmp *.zip);;All Files (*)"
-            )
-            if files:
-                folder_path = os.path.normpath(os.path.dirname(files[0])).replace("\\", "/")
-                file_names = [os.path.basename(f) for f in files]
-                return {"folderPath": folder_path, "files": file_names}
-            return None
+            setup_cocoa_standard_menu()
+            try:
+                import AppKit
+                panel = AppKit.NSOpenPanel.openPanel()
+                panel.setTitle_("이미지 / PSD / ZIP 파일 선택")
+                panel.setMessage_("열람할 이미지, PSD 또는 ZIP 압축 파일을 선택하세요. (Cmd+A로 전체 선택 가능)")
+                panel.setPrompt_("열기")
+                panel.setAllowsMultipleSelection_(True)
+                panel.setCanChooseFiles_(True)
+                panel.setCanChooseDirectories_(False)
+                panel.setResolvesAliases_(True)
+                
+                # 지원 포맷 지정
+                allowed_types = ['jpg', 'jpeg', 'png', 'webp', 'psd', 'gif', 'bmp', 'zip', 'cbz']
+                panel.setAllowedFileTypes_(allowed_types)
+                
+                AppKit.NSApp.activateIgnoringOtherApps_(True)
+                if panel.runModal() == AppKit.NSModalResponseOK:
+                    urls = panel.URLs()
+                    files = [str(url.path()) for url in urls]
+                    return _process_selected_files(files)
+                return None
+            except Exception as e:
+                print(f"[MAC_OPEN_FILE_ERR] AppKit 파일 다이얼로그 오류: {e}")
+                files, _ = QFileDialog.getOpenFileNames(
+                    None,
+                    "이미지 / ZIP 파일 선택",
+                    os.path.expanduser("~"),
+                    "Image & Archive Files (*.jpg *.jpeg *.png *.webp *.psd *.gif *.bmp *.zip *.cbz);;All Files (*)"
+                )
+                return _process_selected_files(files)
         else:
             result = self._window.create_file_dialog(
                 webview.FileDialog.OPEN, 
                 allow_multiple=True, 
-                file_types=('Image & Archive Files (*.jpg;*.jpeg;*.png;*.webp;*.psd;*.gif;*.bmp;*.zip)', 'All files (*.*)')
+                file_types=('Image and Archive Files (*.jpg;*.jpeg;*.png;*.webp;*.psd;*.gif;*.bmp;*.zip;*.cbz)', 'All files (*.*)')
             )
-            if result:
-                folder_path = os.path.normpath(os.path.dirname(result[0])).replace("\\", "/")
-                files = [os.path.basename(f) for f in result]
-                return {"folderPath": folder_path, "files": files}
-            return None
+            return _process_selected_files(result)
 
     def select_capture_dir(self):
         if IS_MAC:
-            folder_path = QFileDialog.getExistingDirectory(
-                self._dialog_parent, 
-                "캡처 저장 폴더 선택", 
-                os.path.expanduser("~")
-            )
-            if folder_path:
-                return os.path.normpath(folder_path).replace("\\", "/")
-            return None
+            try:
+                import AppKit
+                panel = AppKit.NSOpenPanel.openPanel()
+                panel.setTitle_("캡처 저장 폴더 선택")
+                panel.setPrompt_("폴더 선택")
+                panel.setAllowsMultipleSelection_(False)
+                panel.setCanChooseFiles_(False)
+                panel.setCanChooseDirectories_(True)
+                panel.setResolvesAliases_(True)
+                
+                AppKit.NSApp.activateIgnoringOtherApps_(True)
+                if panel.runModal() == AppKit.NSModalResponseOK:
+                    url = panel.URL()
+                    if url:
+                        return os.path.normpath(str(url.path())).replace("\\", "/")
+                return None
+            except Exception as e:
+                print(f"[MAC_DIR_ERR] AppKit 폴더 선택 오류: {e}")
+                folder_path = QFileDialog.getExistingDirectory(None, "캡처 저장 폴더 선택", os.path.expanduser("~"))
+                if folder_path:
+                    return os.path.normpath(folder_path).replace("\\", "/")
+                return None
         else:
             result = self._window.create_file_dialog(webview.FileDialog.FOLDER)
             if result:
@@ -317,23 +504,37 @@ class ViewerAPI:
     
     def get_image_data(self, file_path):
         try:
-            path = os.path.normpath(file_path)
+            # 1. ZIP 파일 내부 경로 지원 (형식: "path/to/archive.zip::internal/image.png")
+            if "::" in file_path:
+                zip_path, internal_path = file_path.split("::", 1)
+                if zip_path.startswith("file://"):
+                    zip_path = urllib.parse.unquote(urllib.parse.urlparse(zip_path).path)
+                    if sys.platform == 'win32' and zip_path.startswith('/'):
+                        zip_path = zip_path[1:]
+                zip_path = os.path.normpath(zip_path)
+                if os.path.exists(zip_path):
+                    with zipfile.ZipFile(zip_path, 'r') as zf:
+                        raw_bytes = zf.read(internal_path)
+                        ext = internal_path.split('.')[-1].lower()
+                        if ext == 'psd':
+                            return decode_psd_to_png_base64(raw_bytes)
+                        else:
+                            encoded = base64.b64encode(raw_bytes).decode('utf-8')
+                            mime = f"image/{ext}" if ext != 'jpg' else "image/jpeg"
+                            return f"data:{mime};base64,{encoded}"
+                return None
+
+            # 2. 일반 로컬 파일 경로 지원
+            path = file_path
+            if path.startswith("file://"):
+                path = urllib.parse.unquote(urllib.parse.urlparse(path).path)
+                if sys.platform == 'win32' and path.startswith('/'):
+                    path = path[1:]
+            path = os.path.normpath(path)
             if os.path.exists(path):
                 ext = path.split('.')[-1].lower()
                 if ext == 'psd':
-                    try:
-                        with Image.open(path) as img:
-                            if img.mode in ('CMYK', 'P'):
-                                img = img.convert('RGB')
-                            elif img.mode not in ('RGB', 'RGBA'):
-                                img = img.convert('RGBA')
-                            buf = io.BytesIO()
-                            img.save(buf, format='PNG')
-                            encoded = base64.b64encode(buf.getvalue()).decode('utf-8')
-                            return f"data:image/png;base64,{encoded}"
-                    except Exception as psd_err:
-                        print(f"PSD 이미지 파싱 실패 ({path}): {psd_err}")
-                        return None
+                    return decode_psd_to_png_base64(path)
                 else:
                     with open(path, "rb") as f:
                         encoded = base64.b64encode(f.read()).decode('utf-8')
@@ -341,7 +542,21 @@ class ViewerAPI:
                         return f"data:{mime};base64,{encoded}"
             return None
         except Exception as e:
-            print(f"이미지 데이터 변환 실패: {e}")
+            print(f"이미지 데이터 변환 실패 ({file_path}): {e}")
+            return None
+
+    def convert_psd_data(self, data_str):
+        try:
+            if not data_str:
+                return None
+            if "," in data_str:
+                _, encoded = data_str.split(",", 1)
+            else:
+                encoded = data_str
+            psd_bytes = base64.b64decode(encoded)
+            return decode_psd_to_png_base64(psd_bytes)
+        except Exception as e:
+            print(f"PSD 데이터 변환 실패: {e}")
             return None
 
     def save_image(self, data_url, filename):
@@ -491,6 +706,11 @@ class ViewerAPI:
                 act_crop.setShortcut(QKeySequence("Alt+X"))
                 act_crop.triggered.connect(lambda: self._exec_js("document.getElementById('btn-crop-capture') && document.getElementById('btn-crop-capture').click()"))
 
+                # 6-1. 자유형 영역 캡처
+                act_poly = menu.addAction('자유형 영역 캡처')
+                act_poly.setShortcut(QKeySequence("Alt+Z"))
+                act_poly.triggered.connect(lambda: self._exec_js("document.getElementById('btn-poly-capture') && document.getElementById('btn-poly-capture').click()"))
+
                 menu.addSeparator()
 
                 # 7. 상세 설정 열기
@@ -562,6 +782,11 @@ if IS_MAC:
         @Slot(str, result=str)
         def get_image_data(self, path):
             res = self.api.get_image_data(path)
+            return res if res else ""
+
+        @Slot(str, result=str)
+        def convert_psd_data(self, data_str):
+            res = self.api.convert_psd_data(data_str)
             return res if res else ""
 
         @Slot(str, str, result=bool)
@@ -703,6 +928,35 @@ if IS_MAC:
             act_close.setShortcut(QKeySequence("Ctrl+W"))
             act_close.triggered.connect(self.close)
 
+            # 편집 메뉴 (macOS 네이티브 파일 다이얼로그 및 입력창에서 Cmd+A, Cmd+C, Cmd+V 단축키 동작 필수)
+            edit_menu = mb.addMenu("편집")
+            
+            act_undo = edit_menu.addAction("실행 취소")
+            act_undo.setShortcut(QKeySequence.Undo)
+            act_undo.triggered.connect(lambda: self.web_view.page().triggerAction(self.web_view.page().WebAction.Undo))
+
+            act_redo = edit_menu.addAction("다시 실행")
+            act_redo.setShortcut(QKeySequence.Redo)
+            act_redo.triggered.connect(lambda: self.web_view.page().triggerAction(self.web_view.page().WebAction.Redo))
+
+            edit_menu.addSeparator()
+
+            act_cut = edit_menu.addAction("오려두기")
+            act_cut.setShortcut(QKeySequence.Cut)
+            act_cut.triggered.connect(lambda: self.web_view.page().triggerAction(self.web_view.page().WebAction.Cut))
+
+            act_copy = edit_menu.addAction("복사")
+            act_copy.setShortcut(QKeySequence.Copy)
+            act_copy.triggered.connect(lambda: self.web_view.page().triggerAction(self.web_view.page().WebAction.Copy))
+
+            act_paste = edit_menu.addAction("붙여넣기")
+            act_paste.setShortcut(QKeySequence.Paste)
+            act_paste.triggered.connect(lambda: self.web_view.page().triggerAction(self.web_view.page().WebAction.Paste))
+
+            act_select_all = edit_menu.addAction("모두 선택")
+            act_select_all.setShortcut(QKeySequence.SelectAll)
+            act_select_all.triggered.connect(lambda: self.web_view.page().triggerAction(self.web_view.page().WebAction.SelectAll))
+
             # 보기 메뉴
             view_menu = mb.addMenu("보기")
 
@@ -725,6 +979,10 @@ if IS_MAC:
             act_crop.setShortcut(QKeySequence("Alt+X"))
             act_crop.triggered.connect(lambda: self.api._exec_js("document.getElementById('btn-crop-capture') && document.getElementById('btn-crop-capture').click()"))
 
+            act_poly = capture_menu.addAction("자유형 영역 캡처")
+            act_poly.setShortcut(QKeySequence("Alt+Z"))
+            act_poly.triggered.connect(lambda: self.api._exec_js("document.getElementById('btn-poly-capture') && document.getElementById('btn-poly-capture').click()"))
+
             # 설정 메뉴
             settings_menu = mb.addMenu("설정")
 
@@ -741,6 +999,7 @@ if IS_MAC:
             self._save_window_state()
 
         def closeEvent(self, event):
+            self.hide()
             self._save_window_state()
             super().closeEvent(event)
 
@@ -748,6 +1007,53 @@ if IS_MAC:
             pos = self.pos()
             size = self.size()
             sync_window_settings_data(size.width(), size.height(), pos.x(), pos.y())
+
+    def setup_cocoa_standard_menu():
+        """macOS 시스템 레벨에서 Cmd+A, Cmd+C, Cmd+V, Cmd+Z 등이 파일 다이얼로그 및 입력창에 전달되도록 Cocoa 메뉴 등록"""
+        try:
+            import AppKit
+            import objc
+
+            app = AppKit.NSApplication.sharedApplication()
+            main_menu = app.mainMenu()
+            if not main_menu:
+                main_menu = AppKit.NSMenu.alloc().init()
+                app.setMainMenu_(main_menu)
+
+            # 기존 Edit/편집 메뉴 확인
+            edit_item = None
+            for item in main_menu.itemArray():
+                if item.title() in ('Edit', '편집') or (item.hasSubmenu() and item.submenu().title() in ('Edit', '편집')):
+                    edit_item = item
+                    break
+
+            if not edit_item:
+                edit_item = AppKit.NSMenuItem.alloc().initWithTitle_action_keyEquivalent_('편집', None, '')
+                main_menu.addItem_(edit_item)
+
+            edit_menu = AppKit.NSMenu.alloc().initWithTitle_('편집')
+
+            # 표준 Cocoa 셀렉터 매핑 (macOS 네이티브 파일 다이얼로그에서 필수)
+            items = [
+                ('실행 취소', objc.selector(None, selector=b'undo:', signature=b'v@:@'), 'z'),
+                ('다시 실행', objc.selector(None, selector=b'redo:', signature=b'v@:@'), 'Z'),
+                (None, None, None),
+                ('오려두기', objc.selector(None, selector=b'cut:', signature=b'v@:@'), 'x'),
+                ('복사', objc.selector(None, selector=b'copy:', signature=b'v@:@'), 'c'),
+                ('붙여넣기', objc.selector(None, selector=b'paste:', signature=b'v@:@'), 'v'),
+                ('모두 선택', objc.selector(None, selector=b'selectAll:', signature=b'v@:@'), 'a'),
+            ]
+
+            for title, sel, key in items:
+                if title is None:
+                    edit_menu.addItem_(AppKit.NSMenuItem.separatorItem())
+                else:
+                    item = AppKit.NSMenuItem.alloc().initWithTitle_action_keyEquivalent_(title, sel, key)
+                    edit_menu.addItem_(item)
+
+            edit_item.setSubmenu_(edit_menu)
+        except Exception as e:
+            print(f"[COCOA_MENU_WARN] Cocoa Edit 메뉴 설정 실패: {e}")
 
     def run_mac():
         app = QApplication(sys.argv)
@@ -757,6 +1063,9 @@ if IS_MAC:
         api = ViewerAPI()
         window = MacMainWindow(api)
         window.show()
+
+        # Qt 윈도우 생성 후 Cocoa 시스템 메뉴바에 표준 셀렉터 주입
+        setup_cocoa_standard_menu()
 
         sys.exit(app.exec())
 
@@ -786,8 +1095,16 @@ def run_windows():
     def sync_win():
         sync_window_settings_data(window.width, window.height, window.x, window.y)
 
+    def on_closing():
+        try:
+            window.hide()
+        except Exception:
+            pass
+        sync_win()
+
     window.events.resized += sync_win
     window.events.moved += sync_win
+    window.events.closing += on_closing
     window.events.closed += lambda: os._exit(0)
     
     webview.start(debug=False, storage_path=STORAGE_PATH, private_mode=False)
