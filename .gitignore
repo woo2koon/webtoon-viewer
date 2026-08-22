@@ -10,5 +10,6 @@ build/
 *.spec
 !WebtoonViewerPro.spec
 *.exe
+*.zip
 *.png
 !logo.png

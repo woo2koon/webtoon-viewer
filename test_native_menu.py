@@ -96,9 +96,9 @@ class TestAPI:
                 add_item("🔗 스크롤 동기화 (체크)", lambda: on_click("스크롤 동기화 토글"), state=NSOnState)
                 menu.addItem_(NSMenuItem.separatorItem())
 
-                # 4. 단축키 항목
                 add_item("📸 현재 화면 캡처 (⌥C)", lambda: on_click("화면 캡처"), key='c', mask=NSAlternateKeyMask)
                 add_item("✂️ 영역 지정 캡처 (⌥X)", lambda: on_click("영역 캡처"), key='x', mask=NSAlternateKeyMask)
+                add_item("📐 자유형 영역 캡처 (⌥Z)", lambda: on_click("자유형 캡처"), key='z', mask=NSAlternateKeyMask)
                 menu.addItem_(NSMenuItem.separatorItem())
 
                 # 5. 설정 및 새 창

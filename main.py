@@ -203,6 +203,144 @@ def decode_psd_to_png_base64(path_or_bytes):
         print(f"[PIL_ERR] PSD 파싱 최종 실패: {e_pil}")
         return None
 
+# [웹툰 컷/패널 자동 인식 엔진]
+_panel_cache = {}
+
+def detect_webtoon_panels(file_path_or_bytes):
+    """
+    OpenCV를 활용하여 웹툰 이미지 내의 사각형 컷(패널) 윤곽선을 자동 검출
+    반환: [{'x': int, 'y': int, 'w': int, 'h': int, 'relX': float, 'relY': float, 'relW': float, 'relH': float}, ...]
+    """
+    try:
+        import cv2
+        import numpy as np
+
+        cache_key = file_path_or_bytes if isinstance(file_path_or_bytes, str) else None
+        if cache_key and cache_key in _panel_cache:
+            return _panel_cache[cache_key]
+
+        img_np = None
+        if isinstance(file_path_or_bytes, str):
+            path = file_path_or_bytes
+            if "::" in path:
+                zip_path, internal_path = path.split("::", 1)
+                if zip_path.startswith("file://"):
+                    zip_path = urllib.parse.unquote(urllib.parse.urlparse(zip_path).path)
+                    if sys.platform == 'win32' and zip_path.startswith('/'):
+                        zip_path = zip_path[1:]
+                zip_path = os.path.normpath(zip_path)
+                if os.path.exists(zip_path):
+                    with zipfile.ZipFile(zip_path, 'r') as zf:
+                        raw_bytes = zf.read(internal_path)
+                        nparr = np.frombuffer(raw_bytes, np.uint8)
+                        img_np = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            else:
+                if path.startswith("file://"):
+                    path = urllib.parse.unquote(urllib.parse.urlparse(path).path)
+                    if sys.platform == 'win32' and path.startswith('/'):
+                        path = path[1:]
+                path = os.path.normpath(path)
+                if os.path.exists(path):
+                    raw_bytes = np.fromfile(path, np.uint8)
+                    img_np = cv2.imdecode(raw_bytes, cv2.IMREAD_COLOR)
+        elif isinstance(file_path_or_bytes, bytes):
+            nparr = np.frombuffer(file_path_or_bytes, np.uint8)
+            img_np = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+
+        if img_np is None:
+            return []
+
+        orig_h, orig_w = img_np.shape[:2]
+        if orig_h < 50 or orig_w < 50:
+            return []
+
+        # 연산 가속을 위해 너비 800px 기준으로 다운스케일 분석
+        target_w = min(orig_w, 800)
+        scale = target_w / float(orig_w)
+        resized_w = target_w
+        resized_h = max(int(orig_h * scale), 50)
+        proc_img = cv2.resize(img_np, (resized_w, resized_h), interpolation=cv2.INTER_AREA)
+
+        gray = cv2.cvtColor(proc_img, cv2.COLOR_BGR2GRAY)
+
+        # 1. 테두리 배경 색상 추출
+        border_pixels = np.concatenate([
+            gray[0:2, :].flatten(),
+            gray[-2:, :].flatten(),
+            gray[:, 0:2].flatten(),
+            gray[:, -2:].flatten()
+        ])
+        bg_val = int(np.median(border_pixels))
+
+        # 2. 배경과의 밝기 차이 계산 및 이진화
+        diff = cv2.absdiff(gray, bg_val)
+        _, thresh = cv2.threshold(diff, 18, 255, cv2.THRESH_BINARY)
+
+        # 3. 모폴로지 클로징 (컷 내부의 텍스트/여백을 묶어 하나의 큰 컷 블록으로 통합)
+        kw = max(5, int(resized_w * 0.03))
+        kh = max(5, int(resized_h * 0.015))
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (kw, kh))
+        closed = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel, iterations=2)
+
+        # 4. 윤곽선 추출
+        contours, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        min_w = resized_w * 0.20  # 이미지 너비의 최소 20% 이상
+        min_h = max(40, int(resized_h * 0.02))  # 최소 40px 이상
+        min_area = (resized_w * resized_h) * 0.012
+
+        panels = []
+        inv_scale = 1.0 / scale
+
+        for cnt in contours:
+            x, y, w, h = cv2.boundingRect(cnt)
+            if w >= min_w and h >= min_h and (w * h) >= min_area:
+                # [초정밀 에지 타이트닝] 모폴로지 팽창으로 인한 여백 침범을 원본 이진화(thresh) 기준으로 칼같이 수축
+                roi_thresh = thresh[y:y+h, x:x+w]
+                if roi_thresh.size > 0:
+                    row_sums = np.sum(roi_thresh > 0, axis=1)
+                    valid_rows = np.where(row_sums >= max(3, int(w * 0.03)))[0]
+                    
+                    col_sums = np.sum(roi_thresh > 0, axis=0)
+                    valid_cols = np.where(col_sums >= max(3, int(h * 0.02)))[0]
+                    
+                    if len(valid_rows) > 0 and len(valid_cols) > 0:
+                        y_start, y_end = valid_rows[0], valid_rows[-1] + 1
+                        x_start, x_end = valid_cols[0], valid_cols[-1] + 1
+                        
+                        x = x + x_start
+                        y = y + y_start
+                        w = max(10, x_end - x_start)
+                        h = max(10, y_end - y_start)
+
+                orig_x = int(x * inv_scale)
+                orig_y = int(y * inv_scale)
+                orig_w_box = int(w * inv_scale)
+                orig_h_box = int(h * inv_scale)
+
+                panels.append({
+                    "x": max(0, orig_x),
+                    "y": max(0, orig_y),
+                    "w": min(orig_w - orig_x, orig_w_box),
+                    "h": min(orig_h - orig_y, orig_h_box),
+                    "relX": orig_x / orig_w,
+                    "relY": orig_y / orig_h,
+                    "relW": orig_w_box / orig_w,
+                    "relH": orig_h_box / orig_h
+                })
+
+        # 위에서 아래 순서로 정렬
+        panels.sort(key=lambda p: p["y"])
+
+        if cache_key:
+            _panel_cache[cache_key] = panels
+
+        return panels
+    except Exception as e:
+        print(f"웹툰 컷 검출 예외: {e}")
+        return []
+
+
 
 def setup_cocoa_standard_menu():
     """macOS 시스템 레벨에서 Cmd+A, Cmd+C, Cmd+V, Cmd+Z 등이 파일 다이얼로그 및 입력창에 전달되도록 Cocoa 메뉴 등록"""
@@ -559,6 +697,14 @@ class ViewerAPI:
         except Exception as e:
             print(f"PSD 데이터 변환 실패: {e}")
             return None
+
+    def detect_panels(self, file_path):
+        """웹툰 이미지 컷/패널 자동 검출 API"""
+        try:
+            return detect_webtoon_panels(file_path)
+        except Exception as e:
+            print(f"detect_panels 호출 실패: {e}")
+            return []
 
     def save_image(self, data_url, filename):
         try:

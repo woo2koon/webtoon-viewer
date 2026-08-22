@@ -305,7 +305,7 @@ stylePatch.innerHTML = `
         border: none !important;
         padding: 0 !important;
         margin: 0 !important;
-        margin-bottom: -1px !important;
+        margin-bottom: 0 !important;
         transform: none !important;
         image-rendering: auto; 
         background: transparent !important;
@@ -343,9 +343,8 @@ stylePatch.innerHTML = `
         max-width: none !important;
         height: auto !important;
         margin-bottom: 0 !important;
-        vertical-align: top !important;
-        transform: translateZ(0) !important;
-        backface-visibility: hidden !important;
+        vertical-align: bottom !important;
+        transform: none !important;
         image-rendering: auto !important;
     }
 
@@ -367,10 +366,9 @@ stylePatch.innerHTML = `
         margin: 0 !important;
         padding: 0 !important;
         border: none !important;
-        margin-bottom: -0.5px !important;
-        vertical-align: top !important;
-        transform: translateZ(0) !important;
-        backface-visibility: hidden !important;
+        margin-bottom: 0 !important;
+        vertical-align: bottom !important;
+        transform: none !important;
         image-rendering: auto !important;
     }
     
@@ -436,6 +434,17 @@ stylePatch.innerHTML = `
         background: var(--btn-secondary-hover) !important;
     }
     .size-btn.active, .size-select-btn.active { background: #007aff !important; color: #fff !important; border-color: #007aff !important; }
+    body.view-mode-original #width-slider-container {
+        display: none !important;
+    }
+    body.view-mode-original #width-value {
+        display: none !important;
+    }
+    body.view-mode-original .btn-group {
+        margin-bottom: 0 !important;
+        padding-bottom: 12px !important;
+        border-bottom: 1px solid var(--divider-color) !important;
+    }
     input[type=range] {
         width: 100% !important;
         margin: 8px 0 0 0 !important;
@@ -880,8 +889,8 @@ function updateMinimapUI(enabled) {
             pinBtn.onclick = (e) => {
                 e.stopPropagation();
                 
-                // 핀 토글 직전 현재 스크롤 앵커(보고 있는 위치)를 수학적으로 계산
-                const anchor = calculateAnchorFromPast();
+                // 핀 토글 직전 현재 스크롤 앵커(보고 있는 위치) 추출
+                const savedAnchor = getGlobalScrollAnchor();
                 
                 // 레이아웃 변화가 즉시 일어나도록 트랜지션 임시 해제 클래스 추가
                 body.classList.add('no-transition');
@@ -904,12 +913,7 @@ function updateMinimapUI(enabled) {
                 body.offsetHeight;
                 
                 // 바뀐 가로 너비 기준에 맞춰 스크롤 위치 보정 및 복원
-                _lastScrollY = window.scrollY;
-                _lastInnerHeight = window.innerHeight;
-                const container = document.getElementById('viewer-container');
-                if (container) _lastContainerWidth = container.clientWidth;
-                
-                applyMathAnchor(anchor);
+                restoreGlobalScrollAnchor(savedAnchor);
                 
                 // 트랜지션 클래스 제거
                 setTimeout(() => {
@@ -1954,113 +1958,54 @@ document.getElementById('toggle-dark').onchange = (e) => {
     window.pywebview.api.save_settings({ app: { darkMode: isDark } });
 };
 document.getElementById('toggle-spacing').onchange = (e) => {
+    const savedAnchor = getGlobalScrollAnchor();
     body.classList.toggle('spacing-collapsed', e.target.checked);
     window.pywebview.api.save_settings({ app: { spacingCollapsed: e.target.checked } });
+    body.offsetHeight;
+    restoreGlobalScrollAnchor(savedAnchor);
     setTimeout(updateMinimapViewportIndicator, 50);
 };
 document.getElementById('btn-fit').onclick = () => {
+    const savedAnchor = getGlobalScrollAnchor();
     body.classList.remove('view-mode-original');
+    body.classList.add('view-mode-fit');
     document.getElementById('btn-fit').classList.add('active');
     document.getElementById('btn-original').classList.remove('active');
     window.pywebview.api.save_settings({ app: { viewMode: 'fit' } });
+    body.offsetHeight;
+    restoreGlobalScrollAnchor(savedAnchor);
     setTimeout(updateMinimapViewportIndicator, 50);
 };
 document.getElementById('btn-original').onclick = () => {
+    const savedAnchor = getGlobalScrollAnchor();
     body.classList.add('view-mode-original');
+    body.classList.remove('view-mode-fit');
     document.getElementById('btn-original').classList.add('active');
     document.getElementById('btn-fit').classList.remove('active');
     window.pywebview.api.save_settings({ app: { viewMode: 'original' } });
+    body.offsetHeight;
+    restoreGlobalScrollAnchor(savedAnchor);
     setTimeout(updateMinimapViewportIndicator, 50);
 };
 // ============================================================
-//  크기 조절 시 스크롤 위치 완벽 보존 (Time-Travel Math Anchor)
+//  크기/모드 조절 시 스크롤 위치 완벽 보존 (Real-Time DOM Viewport Anchor)
 // ============================================================
 
-let _lastScrollY = 0;
-let _lastInnerHeight = 0;
-let _lastContainerWidth = 0;
-let _isResizing = false;
-
-// 1. 스크롤할 때마다 레이아웃 리플로우(Reflow)를 유발하지 않는 가벼운 값만 상시 저장
-window.addEventListener('scroll', () => {
-    if (!_isResizing) {
-        _lastScrollY = window.scrollY;
-        _lastInnerHeight = window.innerHeight;
-        const container = document.getElementById('viewer-container');
-        if (container) _lastContainerWidth = container.clientWidth;
-    }
-}, { passive: true });
-
-// 초기화 시 한번 저장
-setTimeout(() => {
-    window.dispatchEvent(new Event('scroll'));
-}, 500);
-
-// 2. 과거의 숫자들을 이용해 "어떤 이미지의 몇 % 지점을 보고 있었는지" 수학적으로 역추적
-function calculateAnchorFromPast() {
-    const pages = document.querySelectorAll('.webtoon-page');
-    if (pages.length === 0 || _lastContainerWidth === 0) return null;
-
-    const absViewportMid = _lastScrollY + (_lastInnerHeight / 2);
-    let currentAbsTop = 0;
-    
-    for (let i = 0; i < pages.length; i++) {
-        const r = parseFloat(pages[i].dataset.ratio) || (pages[i].naturalHeight / pages[i].naturalWidth) || 0;
-        // -1은 이미지 간의 margin-bottom: -1px 여백 겹침을 정확히 반영하기 위함
-        const h = (_lastContainerWidth * r) - 1;
-        if (h <= 0) continue;
-
-        const nextAbsTop = currentAbsTop + h;
-        
-        if (currentAbsTop <= absViewportMid && nextAbsTop >= absViewportMid) {
-            return { index: i, ratio: (absViewportMid - currentAbsTop) / h };
-        }
-        currentAbsTop = nextAbsTop;
-    }
-    return null;
-}
-
-// 3. 계산된 앵커(과거 위치)를 현재의 바뀐 크기에 맞춰 완벽하게 복원
-function applyMathAnchor(anchor) {
-    if (!anchor) return;
-    
-    const container = document.getElementById('viewer-container');
-    if (!container) return;
-    const currentContainerWidth = container.clientWidth;
-    const pages = document.querySelectorAll('.webtoon-page');
-    
-    let currentAbsTop = 0;
-    let targetAbsPos = 0;
-    
-    for (let i = 0; i < pages.length; i++) {
-        const r = parseFloat(pages[i].dataset.ratio) || (pages[i].naturalHeight / pages[i].naturalWidth) || 0;
-        const h = (currentContainerWidth * r) - 1;
-        if (h <= 0) continue;
-        
-        if (i === anchor.index) {
-            targetAbsPos = currentAbsTop + (h * anchor.ratio);
-            break;
-        }
-        currentAbsTop += h;
-    }
-    
-    const currentViewportMid = window.innerHeight / 2;
-    window.scrollTo({ top: targetAbsPos - currentViewportMid, behavior: 'instant' });
-}
-
-// 4. 애니메이션 도중 실시간 60fps 스크롤 위치 고정 엔진
+// 1. 실시간 뷰포트 중심 기준 앵커 계산 (어떤 이미지의 몇 % 지점이 화면 중앙에 있는지)
 function calculateRealTimeAnchor() {
-    const pages = document.querySelectorAll('.webtoon-page');
+    const containerEl = document.getElementById('viewer-container');
+    const pages = containerEl ? Array.from(containerEl.querySelectorAll('.webtoon-page')) : Array.from(document.querySelectorAll('.webtoon-page'));
     if (pages.length === 0) return null;
     
     const viewportMid = window.innerHeight / 2;
     for (let i = 0; i < pages.length; i++) {
         const rect = pages[i].getBoundingClientRect();
         if (rect.top <= viewportMid && rect.bottom >= viewportMid) {
-            return { index: i, ratio: (viewportMid - rect.top) / rect.height };
+            const ratio = rect.height > 0 ? (viewportMid - rect.top) / rect.height : 0.5;
+            return { index: i, ratio: Math.max(0, Math.min(1, ratio)) };
         }
     }
-    // Fallback: find the one closest to the middle
+    // Fallback: 화면 중앙에 가장 가까운 페이지 탐색
     let closestIndex = 0;
     let minDistance = Infinity;
     for (let i = 0; i < pages.length; i++) {
@@ -2077,26 +2022,28 @@ function calculateRealTimeAnchor() {
     return { index: closestIndex, ratio: Math.max(0, Math.min(1, ratio)) };
 }
 
+// 2. 계산된 앵커를 새로운 레이아웃에 맞춰 화면 중앙에 정확히 재배치
 function applyRealTimeAnchor(anchor) {
     if (!anchor) return;
-    const pages = document.querySelectorAll('.webtoon-page');
+    const containerEl = document.getElementById('viewer-container');
+    const pages = containerEl ? Array.from(containerEl.querySelectorAll('.webtoon-page')) : Array.from(document.querySelectorAll('.webtoon-page'));
     const page = pages[anchor.index];
     if (!page) return;
     
     const pageRect = page.getBoundingClientRect();
-    const deltaY = pageRect.top + (pageRect.height * anchor.ratio) - (window.innerHeight / 2);
+    const targetPoint = pageRect.top + (pageRect.height * anchor.ratio);
+    const deltaY = targetPoint - (window.innerHeight / 2);
     if (Math.abs(deltaY) > 0.1) {
         window.scrollBy(0, deltaY);
     }
 }
 
-function animateScrollAnchor(anchor, duration = 300) {
+function animateScrollAnchor(anchor, duration = 150) {
+    if (!anchor) return;
     const startTime = performance.now();
     function step(now) {
         const elapsed = now - startTime;
-        
         applyRealTimeAnchor(anchor);
-        
         if (elapsed < duration) {
             requestAnimationFrame(step);
         }
@@ -2118,7 +2065,8 @@ function calculateCompareAnchor(side = 'left') {
     for (let i = 0; i < pages.length; i++) {
         const rect = pages[i].getBoundingClientRect();
         if (rect.top <= viewportMid && rect.bottom >= viewportMid) {
-            return { index: i, ratio: (viewportMid - rect.top) / rect.height };
+            const ratio = rect.height > 0 ? (viewportMid - rect.top) / rect.height : 0.5;
+            return { index: i, ratio: Math.max(0, Math.min(1, ratio)) };
         }
     }
     
@@ -2167,7 +2115,7 @@ function applyCompareAnchor(leftAnchor, rightAnchor) {
     }
 }
 
-function animateCompareAnchor(leftAnchor, rightAnchor, duration = 300) {
+function animateCompareAnchor(leftAnchor, rightAnchor, duration = 150) {
     const startTime = performance.now();
     function step(now) {
         const elapsed = now - startTime;
@@ -2179,73 +2127,73 @@ function animateCompareAnchor(leftAnchor, rightAnchor, duration = 300) {
     requestAnimationFrame(step);
 }
 
+// 3. 글로벌 앵커 획득 및 복원 통합 인터페이스
+function getGlobalScrollAnchor() {
+    if (isCompareMode) {
+        return {
+            mode: 'compare',
+            left: calculateCompareAnchor('left'),
+            right: calculateCompareAnchor('right')
+        };
+    } else {
+        return {
+            mode: 'single',
+            anchor: calculateRealTimeAnchor()
+        };
+    }
+}
 
+function restoreGlobalScrollAnchor(saved) {
+    if (!saved) return;
+    if (saved.mode === 'compare') {
+        applyCompareAnchor(saved.left, saved.right);
+    } else {
+        applyRealTimeAnchor(saved.anchor);
+    }
+}
 
 // [1. 슬라이더 조절 시]
 document.getElementById('width-slider').oninput = (e) => {
-    // 슬라이더는 드래그 중에도 최신 상태가 보존되므로 즉시 갱신
-    _lastScrollY = window.scrollY;
-    _lastInnerHeight = window.innerHeight;
-    const container = document.getElementById('viewer-container');
-    if (container) _lastContainerWidth = container.clientWidth;
-    
-    const anchor = calculateAnchorFromPast();
+    const savedAnchor = getGlobalScrollAnchor();
     
     const val = e.target.value;
     document.documentElement.style.setProperty('--container-width', `${690 * (val/100)}px`);
     document.getElementById('width-value').textContent = `${val}%`;
     window.pywebview.api.save_settings({ app: { widthScale: val } });
     
-    // 변경 직후 즉시(동기적으로) 수학적 위치 복원
-    applyMathAnchor(anchor);
+    body.offsetHeight; // 레이아웃 즉시 반영
+    restoreGlobalScrollAnchor(savedAnchor);
     updateMinimapViewportIndicator();
 };
 
 // [2. 윈도우 창 크기 조절 시]
 let _resizeTimer = null;
 window.addEventListener('resize', () => {
-    _isResizing = true;
-    
-    const anchor = calculateAnchorFromPast();
-    applyMathAnchor(anchor);
+    const savedAnchor = getGlobalScrollAnchor();
+    body.offsetHeight;
+    restoreGlobalScrollAnchor(savedAnchor);
     
     clearTimeout(_resizeTimer);
     _resizeTimer = setTimeout(() => {
-        _isResizing = false;
-        // 리사이즈 완료 후 새로운 안전 상태 저장
-        _lastScrollY = window.scrollY;
-        _lastInnerHeight = window.innerHeight;
-        const container = document.getElementById('viewer-container');
-        if (container) _lastContainerWidth = container.clientWidth;
-    }, 200);
+        const afterAnchor = getGlobalScrollAnchor();
+        restoreGlobalScrollAnchor(afterAnchor);
+    }, 100);
 });
 
-// 미니맵 토글 이벤트
+// [3. 미니맵 토글 이벤트]
 document.getElementById('toggle-minimap').onchange = (e) => {
     const enabled = e.target.checked;
+    const savedAnchor = getGlobalScrollAnchor();
     
-    // 토글 직전 현재 스크롤 앵커 계산
-    const anchor = calculateAnchorFromPast();
-    
-    // 레이아웃 변화가 즉시 일어나도록 트랜지션 임시 해제 클래스 추가
     body.classList.add('no-transition');
     
     isMinimapEnabled = enabled;
     window.pywebview.api.save_settings({ app: { minimapEnabled: enabled } });
     updateMinimapUI(enabled);
     
-    // 브라우저 리플로우 강제 유도
     body.offsetHeight;
+    restoreGlobalScrollAnchor(savedAnchor);
     
-    // 가로 너비 갱신 및 스크롤 위치 복원
-    _lastScrollY = window.scrollY;
-    _lastInnerHeight = window.innerHeight;
-    const container = document.getElementById('viewer-container');
-    if (container) _lastContainerWidth = container.clientWidth;
-    
-    applyMathAnchor(anchor);
-    
-    // 트랜지션 클래스 제거
     setTimeout(() => {
         body.classList.remove('no-transition');
     }, 50);
@@ -2933,7 +2881,7 @@ function updateSelectionBox() {
     const adjustedStartX = startX - deltaScrollX;
     const adjustedStartY = startY - deltaScrollY;
     
-    // 웹툰 이미지 영역 기준 경계값 계산 및 제한 적용
+    // 웹툰 이미지 영역 기준 경계값 계산 및 제한 적용 (자유로운 수동 드래그 지정)
     const bounds = getImageBounds(activeDragContainer);
     
     const clampedAdjustedStartX = Math.max(bounds.left, Math.min(bounds.right, adjustedStartX));
@@ -2941,7 +2889,7 @@ function updateSelectionBox() {
     
     const clampedCurrentDragX = Math.max(bounds.left, Math.min(bounds.right, currentDragX));
     const clampedCurrentDragY = Math.max(bounds.top, Math.min(bounds.bottom, currentDragY));
-    
+
     const left = Math.min(clampedAdjustedStartX, clampedCurrentDragX);
     const top = Math.min(clampedAdjustedStartY, clampedCurrentDragY);
     const width = Math.abs(clampedAdjustedStartX - clampedCurrentDragX);
@@ -3274,11 +3222,9 @@ window.addEventListener('mousemove', (e) => {
     // 2. 영역 지정 캡처 또는 자유형 기본 드래그 단계인 경우
     if (isSelecting || (isPolyActive && polyStep === 'drag')) {
         if (e.buttons === 1) {
-            // 마우스 클릭 드래그 중인 경우 (영역 박스 업데이트 및 돋보기)
             updateSelectionBox();
             updateLoupe(currentDragX, currentDragY, activeDragContainer);
         } else {
-            // 마우스 클릭 전 이동 중인 경우 (시작점 사전 조준용 돋보기)
             updateLoupe(currentDragX, currentDragY, activeDragContainer);
         }
     }
@@ -3332,7 +3278,7 @@ window.addEventListener('mouseup', async (e) => {
         return;
     }
 
-    // 3. 기존 직사각형 영역 캡처 완료
+    // 3. 직사각형 영역 캡처 완료
     if (isSelecting) {
         stopAutoScrollLoop();
         hideLoupe();
@@ -3921,6 +3867,8 @@ function applyPlatformShortcuts() {
         if (scCap) scCap.textContent = '⌥C';
         const scCrop = document.getElementById('ctx-shortcut-capture-crop');
         if (scCrop) scCrop.textContent = '⌥X';
+        const scPoly = document.getElementById('ctx-shortcut-capture-poly');
+        if (scPoly) scPoly.textContent = '⌥Z';
     }
 
     // 플랫폼별 웹뷰 렌더링 엔진 표기 (macOS: WebKit, Windows: WebView2)
