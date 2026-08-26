@@ -2,6 +2,15 @@ if (navigator.userAgent.indexOf('Mac') === -1) {
     document.title = 'Webtoon Viewer Pro';
 }
 
+function dLog(msg) {
+    console.log(msg);
+    try {
+        if (window.pywebview && window.pywebview.api && window.pywebview.api.debug_log) {
+            window.pywebview.api.debug_log(String(msg));
+        }
+    } catch(e) {}
+}
+
 // ============================================================
 //  0. [디자인 & 렌더링 패치] 스타일 강제 주입
 // ============================================================
@@ -1188,6 +1197,13 @@ async function loadSettings() {
         toggleCaptureLoupeEl.checked = isCaptureLoupeEnabled;
     }
 
+    // 12. 캡처 클립보드 자동 복사 설정
+    isCaptureClipboardEnabled = app.captureClipboard !== false;
+    const toggleCaptureClipboardEl = document.getElementById('toggle-capture-clipboard');
+    if (toggleCaptureClipboardEl) {
+        toggleCaptureClipboardEl.checked = isCaptureClipboardEnabled;
+    }
+
     // 초기 설정 로드 완료 후 트랜지션 다시 활성화 (시작 시 스르륵 전환 깜빡임 방지)
     setTimeout(() => {
         body.classList.remove('no-transition');
@@ -1310,12 +1326,19 @@ function applySeamlessEngineAll() {
 
 // 3. 파이썬에 전달할 순수 경로만 정리하는 함수
 function finalizePathAndRender(result, side = 'left') {
-    const { folderPath, files, isZip, zipPath } = result;
+    const { folderPath, files, isZip, zipPath, fullPaths } = result;
 
-    const fileObjects = files.map(fileName => {
-        const fullPath = isZip ? `${zipPath}::${fileName}` : `${folderPath}/${fileName}`;
-        return { name: fileName, rawPath: fullPath };
-    });
+    let fileObjects;
+    if (fullPaths && fullPaths.length === files.length) {
+        fileObjects = files.map((fileName, idx) => {
+            return { name: fileName, rawPath: fullPaths[idx] };
+        });
+    } else {
+        fileObjects = files.map(fileName => {
+            const fullPath = isZip ? `${zipPath}::${fileName}` : `${folderPath}/${fileName}`;
+            return { name: fileName, rawPath: fullPath };
+        });
+    }
 
     processPythonFiles(fileObjects, folderPath, side);
     if (settingsPanel) settingsPanel.classList.remove('show');
@@ -1550,7 +1573,7 @@ async function startProcess(files, side = 'left') {
 
         if (files.length === 1 && (files[0].name.endsWith('.zip') || files[0].name.endsWith('.cbz'))) {
             if (typeof JSZip === 'undefined') throw new Error("JSZip 라이브러리가 필요합니다.");
-            fileKey = `zip_${files[0].name}_${files[0].size}_${files[0].lastModified}`;
+            fileKey = files[0].path || `zip_${files[0].name}_${files[0].size}_${files[0].lastModified}`;
             imageBlobs = await unzipFiles(files[0]);
         } else {
             const imgs = files.filter(f => {
@@ -1565,8 +1588,13 @@ async function startProcess(files, side = 'left') {
             showToast(`${imgs.length}개의 이미지를 불러옵니다.${sideSuffix}`, "camera");
             
             imgs.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' }));
+            imgs.forEach(f => {
+                if (f.path) {
+                    f.rawPath = f.path;
+                }
+            });
             imageBlobs = imgs;
-            fileKey = `folder_${imgs[0].name}_${imgs.length}_${imgs[0].size}`;
+            fileKey = imgs[0].path ? imgs[0].path : `folder_${imgs[0].name}_${imgs.length}_${imgs[0].size}`;
         }
 
         if (!isRight) {
@@ -1639,6 +1667,10 @@ async function processImagesInBatches(imageBlobs, side = 'left') {
         wrapper.className = 'image-wrapper skeleton webtoon-page';
         wrapper.id = `${side}-file-start-${i}`;
         wrapper.dataset.fileIndex = i;
+        const rawPath = blob.rawPath || blob.path || "";
+        if (rawPath) {
+            wrapper.dataset.rawPath = rawPath;
+        }
 
         const img = document.createElement('img');
         img.className = 'viewer-image';
@@ -1789,6 +1821,10 @@ async function unzipFiles(file) {
     for (let i = 0; i < validFiles.length; i++) {
         const entryBlob = await validFiles[i].async('blob');
         entryBlob.name = validFiles[i].name;
+        if (file && file.path) {
+            entryBlob.rawPath = `${file.path}::${validFiles[i].name}`;
+            entryBlob.path = file.path;
+        }
         blobs.push(entryBlob);
         if (i % 20 === 0) await new Promise(r => requestAnimationFrame(r));
     }
@@ -2310,6 +2346,17 @@ if (toggleCaptureLoupe) {
     });
 }
 
+// 캡처 클립보드 자동 복사 On/Off 이벤트
+const toggleCaptureClipboard = document.getElementById('toggle-capture-clipboard');
+if (toggleCaptureClipboard) {
+    toggleCaptureClipboard.addEventListener('change', (e) => {
+        isCaptureClipboardEnabled = e.target.checked;
+        if (window.pywebview && window.pywebview.api) {
+            window.pywebview.api.save_settings({ app: { captureClipboard: isCaptureClipboardEnabled } });
+        }
+    });
+}
+
 // 단축키 로직 수정 (기존 window.onkeydown을 찾아서 내용을 추가하세요)
 const originalOnKeyDown = window.onkeydown;
 window.onkeydown = (e) => {
@@ -2404,6 +2451,45 @@ window.addEventListener('drop', async (e) => {
         }
     }
 
+    // 1. Windows WebView2인 경우 postMessageWithAdditionalObjects로 실제 OS 파일 경로를 파이썬으로 전달
+    const filesArray = [];
+    if (e.dataTransfer) {
+        if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            for (let i = 0; i < e.dataTransfer.files.length; i++) {
+                filesArray.push(e.dataTransfer.files[i]);
+            }
+        } else if (e.dataTransfer.items && e.dataTransfer.items.length > 0) {
+            for (let i = 0; i < e.dataTransfer.items.length; i++) {
+                const f = e.dataTransfer.items[i].getAsFile();
+                if (f) filesArray.push(f);
+            }
+        }
+    }
+
+    if (window.chrome && window.chrome.webview && window.chrome.webview.postMessageWithAdditionalObjects && filesArray.length > 0) {
+        try {
+            dLog(`[DnD] postMessageWithAdditionalObjects 전송: ${filesArray.length}개 파일`);
+            window.chrome.webview.postMessageWithAdditionalObjects('FilesDropped', filesArray);
+            // .NET on_script_notify 비동기 메시지 수신 대기
+            await new Promise(r => setTimeout(r, 120));
+            if (window.pywebview && window.pywebview.api && window.pywebview.api.process_dropped_paths) {
+                let res = await window.pywebview.api.process_dropped_paths();
+                if (!res || !res.files || res.files.length === 0) {
+                    await new Promise(r => setTimeout(r, 100));
+                    res = await window.pywebview.api.process_dropped_paths();
+                }
+                dLog("[DnD] process_dropped_paths 수신 결과: " + JSON.stringify(res));
+                if (res && res.files && res.files.length > 0) {
+                    finalizePathAndRender(res, side);
+                    return;
+                }
+            }
+        } catch (dndErr) {
+            dLog("[DnD] Native WebView2 DnD 처리 예외, 폴백 로직 시도: " + dndErr);
+        }
+    }
+
+    // 2. 일반 브라우저 / 폴백 JS 처리
     if (e.dataTransfer && e.dataTransfer.items) {
         const entries = [];
         for (let i = 0; i < e.dataTransfer.items.length; i++) {
@@ -2719,8 +2805,39 @@ let polyStep = 'none'; // 'none' | 'drag' | 'adjust'
 let polyDocPoints = []; // 4개 꼭짓점 [{docX, docY}, ...]
 let activePolyHandle = null;
 
-// [원형 돋보기(스코프) 상태 변수 및 DOM]
+// [클립보드 및 원형 돋보기(스코프) 상태 변수]
+let isCaptureClipboardEnabled = true;
 let isCaptureLoupeEnabled = true;
+
+async function copyDataUrlToClipboard(dataUrl) {
+    try {
+        if (!navigator.clipboard || !window.ClipboardItem) return false;
+        const res = await fetch(dataUrl);
+        const blob = await res.blob();
+        if (blob.type === 'image/png') {
+            await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+            return true;
+        } else {
+            const img = new Image();
+            img.src = dataUrl;
+            await new Promise(r => img.onload = r);
+            const c = document.createElement('canvas');
+            c.width = img.naturalWidth;
+            c.height = img.naturalHeight;
+            const ctx = c.getContext('2d');
+            ctx.drawImage(img, 0, 0);
+            const pngBlob = await new Promise(r => c.toBlob(r, 'image/png'));
+            if (pngBlob) {
+                await navigator.clipboard.write([new ClipboardItem({ 'image/png': pngBlob })]);
+                return true;
+            }
+        }
+    } catch (err) {
+        console.warn("JS 클립보드 복사 시도:", err);
+    }
+    return false;
+}
+
 const captureLoupe = document.getElementById('capture-loupe');
 const captureLoupeCanvas = document.getElementById('capture-loupe-canvas');
 const captureLoupeCtx = captureLoupeCanvas ? captureLoupeCanvas.getContext('2d') : null;
@@ -3515,10 +3632,15 @@ async function captureHighRes(rect, type) {
         const fileExt = format === "jpeg" ? "jpg" : format;
         const filename = `Webtoon_${type}_${timestamp}.${fileExt}`;
 
+        if (isCaptureClipboardEnabled) {
+            copyDataUrlToClipboard(dataUrl);
+        }
+
         if (window.pywebview && window.pywebview.api) {
             const success = await window.pywebview.api.save_image(dataUrl, filename);
             if (success) {
-                showToast("캡쳐 완료!", "camera");
+                const msg = isCaptureClipboardEnabled ? "캡쳐 완료! (클립보드 복사됨)" : "캡쳐 완료!";
+                showToast(msg, "camera");
             } else {
                 showToast("저장에 실패했습니다.", "x");
             }
@@ -3667,10 +3789,15 @@ async function capturePolygonHighRes(screenPoints, type = "Poly") {
         const fileExt = format === "jpeg" ? "jpg" : format;
         const filename = `Webtoon_${type}_${timestamp}.${fileExt}`;
 
+        if (isCaptureClipboardEnabled) {
+            copyDataUrlToClipboard(dataUrl);
+        }
+
         if (window.pywebview && window.pywebview.api) {
             const success = await window.pywebview.api.save_image(dataUrl, filename);
             if (success) {
-                showToast("자유형 캡쳐 완료!", "camera");
+                const msg = isCaptureClipboardEnabled ? "자유형 캡쳐 완료! (클립보드 복사됨)" : "자유형 캡쳐 완료!";
+                showToast(msg, "camera");
             } else {
                 showToast("저장에 실패했습니다.", "x");
             }
@@ -4013,6 +4140,7 @@ window.addEventListener('contextmenu', (e) => {
     
     // 파일 위치 열기 메뉴 활성화 여부 동기화 (현재 노출 중인 개별 컷 파일 경로 기준)
     const activePath = getActiveVisibleFilePath(currentSideContext);
+    dLog(`[ContextMenu] activePath: "${activePath}" (side: ${currentSideContext})`);
     const locationItem = document.getElementById('ctx-open-location');
     if (locationItem) {
         if (activePath) {

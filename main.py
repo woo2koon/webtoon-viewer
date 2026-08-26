@@ -8,10 +8,46 @@ import urllib.parse
 import urllib.request
 import tempfile
 import subprocess
+import re
 import zipfile
 
-APP_VERSION = "3.2"
+def natural_sort_key(s):
+    return [int(text) if text.isdigit() else text.lower() for text in re.split(r'(\d+)', str(s))]
+
+SUPPORTED_IMAGE_EXTS = ('.jpg', '.jpeg', '.png', '.webp', '.psd', '.gif', '.bmp')
+
+def normalize_fs_path(p: str) -> str:
+    if not p:
+        return ""
+    # 1. file:// 스키마 처리
+    if p.startswith("file://"):
+        parsed = urllib.parse.urlparse(p)
+        p = urllib.parse.unquote(parsed.path)
+        if sys.platform == 'win32' and len(p) >= 3 and p[0] == '/' and p[2] == ':':
+            p = p[1:]
+        elif parsed.netloc:
+            p = r'\\' + parsed.netloc + p
+
+    # 2. Windows UNC 네트워크 공유 경로 보존 (예: //Server/Share 또는 \\Server\Share)
+    if p.startswith("//") or p.startswith("\\\\"):
+        server_path = p.lstrip("/\\")
+        return os.path.normpath(r'\\' + server_path)
+
+    # 3. Windows 로컬 드라이브 절대경로 ("/C:/...") 보정
+    if sys.platform == 'win32' and len(p) >= 3 and p[0] == '/' and p[2] == ':':
+        p = p[1:]
+
+    return os.path.normpath(p)
+
+APP_VERSION = "3.3.1"
 IS_MAC = (sys.platform == 'darwin')
+
+if not IS_MAC:
+    try:
+        from webview.dom import _dnd_state
+        _dnd_state['num_listeners'] = 1
+    except Exception:
+        pass
 
 # macOS 전용 라이브러리 (PySide6)
 if IS_MAC:
@@ -81,6 +117,7 @@ def load_all_settings():
             "minimapEnabled": True,
             "captureDir": "",
             "captureLoupeEnabled": True,
+            "captureClipboard": True,
             "seamlessStitchingEnabled": True
         },
         "resume": {}
@@ -203,142 +240,7 @@ def decode_psd_to_png_base64(path_or_bytes):
         print(f"[PIL_ERR] PSD 파싱 최종 실패: {e_pil}")
         return None
 
-# [웹툰 컷/패널 자동 인식 엔진]
-_panel_cache = {}
 
-def detect_webtoon_panels(file_path_or_bytes):
-    """
-    OpenCV를 활용하여 웹툰 이미지 내의 사각형 컷(패널) 윤곽선을 자동 검출
-    반환: [{'x': int, 'y': int, 'w': int, 'h': int, 'relX': float, 'relY': float, 'relW': float, 'relH': float}, ...]
-    """
-    try:
-        import cv2
-        import numpy as np
-
-        cache_key = file_path_or_bytes if isinstance(file_path_or_bytes, str) else None
-        if cache_key and cache_key in _panel_cache:
-            return _panel_cache[cache_key]
-
-        img_np = None
-        if isinstance(file_path_or_bytes, str):
-            path = file_path_or_bytes
-            if "::" in path:
-                zip_path, internal_path = path.split("::", 1)
-                if zip_path.startswith("file://"):
-                    zip_path = urllib.parse.unquote(urllib.parse.urlparse(zip_path).path)
-                    if sys.platform == 'win32' and zip_path.startswith('/'):
-                        zip_path = zip_path[1:]
-                zip_path = os.path.normpath(zip_path)
-                if os.path.exists(zip_path):
-                    with zipfile.ZipFile(zip_path, 'r') as zf:
-                        raw_bytes = zf.read(internal_path)
-                        nparr = np.frombuffer(raw_bytes, np.uint8)
-                        img_np = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-            else:
-                if path.startswith("file://"):
-                    path = urllib.parse.unquote(urllib.parse.urlparse(path).path)
-                    if sys.platform == 'win32' and path.startswith('/'):
-                        path = path[1:]
-                path = os.path.normpath(path)
-                if os.path.exists(path):
-                    raw_bytes = np.fromfile(path, np.uint8)
-                    img_np = cv2.imdecode(raw_bytes, cv2.IMREAD_COLOR)
-        elif isinstance(file_path_or_bytes, bytes):
-            nparr = np.frombuffer(file_path_or_bytes, np.uint8)
-            img_np = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-
-        if img_np is None:
-            return []
-
-        orig_h, orig_w = img_np.shape[:2]
-        if orig_h < 50 or orig_w < 50:
-            return []
-
-        # 연산 가속을 위해 너비 800px 기준으로 다운스케일 분석
-        target_w = min(orig_w, 800)
-        scale = target_w / float(orig_w)
-        resized_w = target_w
-        resized_h = max(int(orig_h * scale), 50)
-        proc_img = cv2.resize(img_np, (resized_w, resized_h), interpolation=cv2.INTER_AREA)
-
-        gray = cv2.cvtColor(proc_img, cv2.COLOR_BGR2GRAY)
-
-        # 1. 테두리 배경 색상 추출
-        border_pixels = np.concatenate([
-            gray[0:2, :].flatten(),
-            gray[-2:, :].flatten(),
-            gray[:, 0:2].flatten(),
-            gray[:, -2:].flatten()
-        ])
-        bg_val = int(np.median(border_pixels))
-
-        # 2. 배경과의 밝기 차이 계산 및 이진화
-        diff = cv2.absdiff(gray, bg_val)
-        _, thresh = cv2.threshold(diff, 18, 255, cv2.THRESH_BINARY)
-
-        # 3. 모폴로지 클로징 (컷 내부의 텍스트/여백을 묶어 하나의 큰 컷 블록으로 통합)
-        kw = max(5, int(resized_w * 0.03))
-        kh = max(5, int(resized_h * 0.015))
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (kw, kh))
-        closed = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel, iterations=2)
-
-        # 4. 윤곽선 추출
-        contours, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-        min_w = resized_w * 0.20  # 이미지 너비의 최소 20% 이상
-        min_h = max(40, int(resized_h * 0.02))  # 최소 40px 이상
-        min_area = (resized_w * resized_h) * 0.012
-
-        panels = []
-        inv_scale = 1.0 / scale
-
-        for cnt in contours:
-            x, y, w, h = cv2.boundingRect(cnt)
-            if w >= min_w and h >= min_h and (w * h) >= min_area:
-                # [초정밀 에지 타이트닝] 모폴로지 팽창으로 인한 여백 침범을 원본 이진화(thresh) 기준으로 칼같이 수축
-                roi_thresh = thresh[y:y+h, x:x+w]
-                if roi_thresh.size > 0:
-                    row_sums = np.sum(roi_thresh > 0, axis=1)
-                    valid_rows = np.where(row_sums >= max(3, int(w * 0.03)))[0]
-                    
-                    col_sums = np.sum(roi_thresh > 0, axis=0)
-                    valid_cols = np.where(col_sums >= max(3, int(h * 0.02)))[0]
-                    
-                    if len(valid_rows) > 0 and len(valid_cols) > 0:
-                        y_start, y_end = valid_rows[0], valid_rows[-1] + 1
-                        x_start, x_end = valid_cols[0], valid_cols[-1] + 1
-                        
-                        x = x + x_start
-                        y = y + y_start
-                        w = max(10, x_end - x_start)
-                        h = max(10, y_end - y_start)
-
-                orig_x = int(x * inv_scale)
-                orig_y = int(y * inv_scale)
-                orig_w_box = int(w * inv_scale)
-                orig_h_box = int(h * inv_scale)
-
-                panels.append({
-                    "x": max(0, orig_x),
-                    "y": max(0, orig_y),
-                    "w": min(orig_w - orig_x, orig_w_box),
-                    "h": min(orig_h - orig_y, orig_h_box),
-                    "relX": orig_x / orig_w,
-                    "relY": orig_y / orig_h,
-                    "relW": orig_w_box / orig_w,
-                    "relH": orig_h_box / orig_h
-                })
-
-        # 위에서 아래 순서로 정렬
-        panels.sort(key=lambda p: p["y"])
-
-        if cache_key:
-            _panel_cache[cache_key] = panels
-
-        return panels
-    except Exception as e:
-        print(f"웹툰 컷 검출 예외: {e}")
-        return []
 
 
 
@@ -458,6 +360,9 @@ class ViewerAPI:
         threading.Thread(target=_download_task, daemon=True).start()
         return True
 
+    def debug_log(self, msg):
+        print(f"[JS_DEBUG] {msg}")
+
     def get_settings(self):
         return load_all_settings()
 
@@ -481,7 +386,7 @@ class ViewerAPI:
                     if url:
                         folder_path = os.path.normpath(str(url.path())).replace("\\", "/")
                         files = [f for f in os.listdir(folder_path) if f.lower().endswith(SUPPORTED_IMAGE_EXTS)]
-                        files.sort()
+                        files.sort(key=natural_sort_key)
                         return {"folderPath": folder_path, "files": files}
                 return None
             except Exception as e:
@@ -490,7 +395,7 @@ class ViewerAPI:
                 if folder_path:
                     folder_path = os.path.normpath(folder_path).replace("\\", "/")
                     files = [f for f in os.listdir(folder_path) if f.lower().endswith(SUPPORTED_IMAGE_EXTS)]
-                    files.sort()
+                    files.sort(key=natural_sort_key)
                     return {"folderPath": folder_path, "files": files}
                 return None
         else:
@@ -498,7 +403,7 @@ class ViewerAPI:
             if result:
                 folder_path = os.path.normpath(result[0]).replace("\\", "/")
                 files = [f for f in os.listdir(folder_path) if f.lower().endswith(SUPPORTED_IMAGE_EXTS)]
-                files.sort()
+                files.sort(key=natural_sort_key)
                 return {"folderPath": folder_path, "files": files}
             return None
 
@@ -519,7 +424,7 @@ class ViewerAPI:
                                 if not n.endswith('/') and not n.startswith('__MACOSX/') and
                                 n.lower().endswith(SUPPORTED_IMAGE_EXTS) and not n.lower().endswith(('.zip', '.cbz'))
                             ]
-                            image_names.sort()
+                            image_names.sort(key=natural_sort_key)
                             if image_names:
                                 return {
                                     "isZip": True,
@@ -532,6 +437,7 @@ class ViewerAPI:
 
             folder_path = os.path.normpath(os.path.dirname(file_list[0])).replace("\\", "/")
             file_names = [os.path.basename(f) for f in file_list]
+            file_names.sort(key=natural_sort_key)
             return {"folderPath": folder_path, "files": file_names}
 
         if IS_MAC:
@@ -603,12 +509,92 @@ class ViewerAPI:
             if result:
                 return os.path.normpath(result[0]).replace("\\", "/")
             return None
+
+    def process_dropped_paths(self):
+        try:
+            if not IS_MAC:
+                from webview.dom import _dnd_state
+                raw_paths = list(_dnd_state.get('paths', []))
+                _dnd_state['paths'] = []
+                if not raw_paths:
+                    return None
+                
+                print(f"[PY_DND] Dropped raw paths: {raw_paths}")
+                file_paths = []
+                for p in raw_paths:
+                    if isinstance(p, (tuple, list)) and len(p) > 1 and p[1]:
+                        file_paths.append(normalize_fs_path(str(p[1])))
+                    elif isinstance(p, str) and p:
+                        file_paths.append(normalize_fs_path(p))
+
+                if not file_paths:
+                    return None
+
+                # 1. 단일 압축 파일(.zip, .cbz)인 경우
+                if len(file_paths) == 1 and file_paths[0].lower().endswith(('.zip', '.cbz')) and os.path.isfile(file_paths[0]):
+                    single_path = file_paths[0]
+                    try:
+                        with zipfile.ZipFile(single_path, 'r') as zf:
+                            image_names = [
+                                n for n in zf.namelist()
+                                if not n.endswith('/') and not n.startswith('__MACOSX/') and
+                                n.lower().endswith(SUPPORTED_IMAGE_EXTS) and not n.lower().endswith(('.zip', '.cbz'))
+                            ]
+                            image_names.sort(key=natural_sort_key)
+                            if image_names:
+                                res = {
+                                    "isZip": True,
+                                    "zipPath": single_path,
+                                    "folderPath": single_path,
+                                    "files": image_names
+                                }
+                                print(f"[PY_DND] Returned ZIP: {single_path} ({len(image_names)} images)")
+                                return res
+                    except Exception as zip_err:
+                        print(f"드롭 ZIP 파싱 실패: {zip_err}")
+
+                # 2. 폴더 또는 파일 목록 수집
+                collected_files = []
+                for p in file_paths:
+                    if os.path.isdir(p):
+                        for f in os.listdir(p):
+                            if f.lower().endswith(SUPPORTED_IMAGE_EXTS):
+                                collected_files.append(normalize_fs_path(os.path.join(p, f)))
+                    elif os.path.isfile(p) and p.lower().endswith(SUPPORTED_IMAGE_EXTS):
+                        collected_files.append(p)
+
+                if not collected_files:
+                    return None
+
+                collected_files.sort(key=lambda p: natural_sort_key(os.path.basename(p)))
+
+                first_dir = os.path.dirname(collected_files[0])
+                all_same_dir = all(os.path.dirname(p) == first_dir for p in collected_files)
+                
+                if all_same_dir:
+                    folder_path = first_dir
+                    files = [os.path.basename(p) for p in collected_files]
+                    res = {"folderPath": folder_path, "files": files, "fullPaths": collected_files}
+                else:
+                    folder_path = first_dir
+                    files = [os.path.basename(p) for p in collected_files]
+                    res = {"folderPath": folder_path, "files": files, "fullPaths": collected_files}
+                
+                print(f"[PY_DND] Returned {len(files)} files in folder: {folder_path}")
+                return res
+            return None
+        except Exception as e:
+            print(f"드롭 파일 처리 실패: {e}")
+            return None
     
     def open_file_location(self, path):
         if not path:
             return False
         try:
-            norm_path = os.path.normpath(path)
+            if "::" in path:
+                path = path.split("::", 1)[0]
+
+            norm_path = normalize_fs_path(path)
             if os.path.exists(norm_path):
                 if sys.platform == 'darwin':
                     if os.path.isfile(norm_path):
@@ -617,7 +603,7 @@ class ViewerAPI:
                         subprocess.run(['open', norm_path])
                 elif sys.platform == 'win32':
                     if os.path.isfile(norm_path):
-                        subprocess.run(f'explorer /select,"{norm_path}"', shell=True)
+                        subprocess.Popen(f'explorer.exe /select,"{norm_path}"')
                     else:
                         os.startfile(norm_path)
                 else:
@@ -646,11 +632,7 @@ class ViewerAPI:
             # 1. ZIP 파일 내부 경로 지원 (형식: "path/to/archive.zip::internal/image.png")
             if "::" in file_path:
                 zip_path, internal_path = file_path.split("::", 1)
-                if zip_path.startswith("file://"):
-                    zip_path = urllib.parse.unquote(urllib.parse.urlparse(zip_path).path)
-                    if sys.platform == 'win32' and zip_path.startswith('/'):
-                        zip_path = zip_path[1:]
-                zip_path = os.path.normpath(zip_path)
+                zip_path = normalize_fs_path(zip_path)
                 if os.path.exists(zip_path):
                     with zipfile.ZipFile(zip_path, 'r') as zf:
                         raw_bytes = zf.read(internal_path)
@@ -663,13 +645,8 @@ class ViewerAPI:
                             return f"data:{mime};base64,{encoded}"
                 return None
 
-            # 2. 일반 로컬 파일 경로 지원
-            path = file_path
-            if path.startswith("file://"):
-                path = urllib.parse.unquote(urllib.parse.urlparse(path).path)
-                if sys.platform == 'win32' and path.startswith('/'):
-                    path = path[1:]
-            path = os.path.normpath(path)
+            # 2. 일반 로컬 및 네트워크 UNC 파일 경로 지원
+            path = normalize_fs_path(file_path)
             if os.path.exists(path):
                 ext = path.split('.')[-1].lower()
                 if ext == 'psd':
@@ -698,13 +675,6 @@ class ViewerAPI:
             print(f"PSD 데이터 변환 실패: {e}")
             return None
 
-    def detect_panels(self, file_path):
-        """웹툰 이미지 컷/패널 자동 검출 API"""
-        try:
-            return detect_webtoon_panels(file_path)
-        except Exception as e:
-            print(f"detect_panels 호출 실패: {e}")
-            return []
 
     def save_image(self, data_url, filename):
         try:
@@ -729,10 +699,41 @@ class ViewerAPI:
             with open(download_path, "wb") as f:
                 f.write(data)
             print(f"저장 완료: {download_path}")
+
+            # 클립보드 자동 복사 옵션 확인 및 실행
+            capture_clipboard = settings.get("app", {}).get("captureClipboard", True)
+            if capture_clipboard:
+                self._copy_to_system_clipboard(data)
+
             return True
         except Exception as e:
             print(f"저장 실패: {e}")
             return False
+
+    def _copy_to_system_clipboard(self, data):
+        try:
+            if IS_MAC:
+                from PySide6.QtGui import QGuiApplication, QImage
+                image = QImage.fromData(data)
+                if not image.isNull():
+                    clipboard = QGuiApplication.clipboard()
+                    if clipboard:
+                        clipboard.setImage(image)
+                        print("[CLIPBOARD] ✅ macOS 시스템 클립보드에 이미지 복사 완료")
+            else:
+                try:
+                    import io
+                    from PIL import Image
+                    img = Image.open(io.BytesIO(data))
+                    temp_file = os.path.join(tempfile.gettempdir(), "_webtoon_clip.png")
+                    img.save(temp_file, "PNG")
+                    ps_cmd = f"Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Clipboard]::SetImage([System.Drawing.Image]::FromFile('{temp_file}'))"
+                    subprocess.run(["powershell", "-NoProfile", "-Command", ps_cmd], creationflags=0x08000000 if sys.platform == 'win32' else 0, check=False)
+                    print("[CLIPBOARD] ✅ Windows 시스템 클립보드에 이미지 복사 완료")
+                except Exception as win_err:
+                    print(f"[CLIPBOARD] Windows 클립보드 복사 에러: {win_err}")
+        except Exception as e:
+            print(f"[CLIPBOARD] 클립보드 복사 처리 실패: {e}")
 
     def save_settings(self, settings):
         try:
@@ -947,6 +948,10 @@ if IS_MAC:
         @Slot(str, result=bool)
         def debug_log(self, msg):
             return self.api.debug_log(msg)
+
+        @Slot(result='QVariant')
+        def process_dropped_paths(self):
+            return self.api.process_dropped_paths()
 
         @Slot('QVariant')
         def show_mac_native_menu(self, data):
@@ -1221,6 +1226,22 @@ if IS_MAC:
 # Windows / 기타 OS 전용 pywebview 구현체
 # ==============================================================================
 def run_windows():
+    try:
+        from webview.dom import _dnd_state
+        _dnd_state['num_listeners'] = 1
+    except Exception as e:
+        print(f"[DND_INIT_WARN] DnD 리스너 초기화: {e}")
+
+    # WebView2 디스크 캐시 정리 (최신 JS/HTML 즉시 반영)
+    try:
+        import shutil
+        for cache_name in ("Cache", "Code Cache", "GPUCache"):
+            c_dir = os.path.join(STORAGE_PATH, "EBWebView", "Default", cache_name)
+            if os.path.exists(c_dir):
+                shutil.rmtree(c_dir, ignore_errors=True)
+    except Exception:
+        pass
+
     api = ViewerAPI()
     html_path = get_resource_path('viewer.html')
     
