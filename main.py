@@ -302,32 +302,52 @@ class ViewerAPI:
 
     def check_for_updates(self):
         try:
-            url = "https://api.github.com/repos/woo2koon/webtoon-viewer/releases/latest"
+            url = "https://api.github.com/repos/woo2koon/webtoon-viewer/releases"
             req = urllib.request.Request(url, headers={'User-Agent': 'WebtoonViewerUpdater'})
             with urllib.request.urlopen(req) as response:
                 if response.status == 200:
-                    data = json.loads(response.read().decode('utf-8'))
-                    latest_version = data.get('tag_name', '').lstrip('v')
-                    if latest_version and latest_version != APP_VERSION:
-                        try:
-                            v_latest = [int(x) for x in latest_version.split('.') if x.isdigit()]
-                            v_current = [int(x) for x in APP_VERSION.split('.') if x.isdigit()]
-                            if v_latest and v_current and v_latest <= v_current:
-                                return {"update_available": False}
-                        except Exception:
-                            pass
-                            
-                        download_url = None
-                        target_ext = '.dmg' if IS_MAC else '.exe'
-                        for asset in data.get('assets', []):
-                            if asset['name'].endswith(target_ext):
-                                download_url = asset['browser_download_url']
-                                break
-                        if not download_url and data.get('assets'):
-                            download_url = data['assets'][0]['browser_download_url']
+                    releases = json.loads(response.read().decode('utf-8'))
+                    if not isinstance(releases, list):
+                        releases = [releases]
 
+                    v_current = [int(x) for x in APP_VERSION.split('.') if x.isdigit()]
+
+                    candidate_releases = []
+                    for rel in releases:
+                        if rel.get('draft'):
+                            continue
+                        tag_version = rel.get('tag_name', '').lstrip('v')
+                        try:
+                            v_rel = [int(x) for x in tag_version.split('.') if x.isdigit()]
+                        except Exception:
+                            continue
+                        if v_rel and v_rel > v_current:
+                            candidate_releases.append((v_rel, tag_version, rel))
+
+                    # 최신 버전 순으로 정렬
+                    candidate_releases.sort(key=lambda item: item[0], reverse=True)
+
+                    for v_rel, tag_version, rel in candidate_releases:
+                        download_url = None
+                        for asset in rel.get('assets', []):
+                            fname = asset.get('name', '').lower()
+                            if IS_MAC:
+                                if fname.endswith('.dmg') or fname.endswith('.pkg') or ('mac' in fname and fname.endswith('.zip')):
+                                    download_url = asset.get('browser_download_url')
+                                    break
+                            else:
+                                if fname.endswith('.exe') or fname.endswith('.msi'):
+                                    download_url = asset.get('browser_download_url')
+                                    break
+
+                        # 해당 OS에 맞는 파일이 실제로 존재할 때만 업데이트 제공
                         if download_url:
-                            return {"update_available": True, "version": latest_version, "download_url": download_url}
+                            return {
+                                "update_available": True,
+                                "version": tag_version,
+                                "download_url": download_url
+                            }
+
             return {"update_available": False}
         except Exception as e:
             print(f"Update check failed: {e}")
@@ -349,11 +369,10 @@ class ViewerAPI:
                 else:
                     os.startfile(filepath)
 
-                if self._window:
-                    if hasattr(self._window, 'close'):
-                        self._window.close()
-                    elif hasattr(self._window, 'destroy'):
-                        self._window.destroy()
+                # 새 버전 대치(macOS Applications 복사) 및 인스톨러 충돌 방지를 위해 현재 앱 완전 종료
+                import time
+                time.sleep(0.6)
+                os._exit(0)
             except Exception as e:
                 print(f"Download or install failed: {e}")
 
@@ -1222,6 +1241,15 @@ if IS_MAC:
         sys.exit(app.exec())
 
 
+def close_splash():
+    try:
+        import pyi_splash
+        if pyi_splash.is_alive():
+            pyi_splash.close()
+    except Exception:
+        pass
+
+
 # ==============================================================================
 # Windows / 기타 OS 전용 pywebview 구현체
 # ==============================================================================
@@ -1231,16 +1259,6 @@ def run_windows():
         _dnd_state['num_listeners'] = 1
     except Exception as e:
         print(f"[DND_INIT_WARN] DnD 리스너 초기화: {e}")
-
-    # WebView2 디스크 캐시 정리 (최신 JS/HTML 즉시 반영)
-    try:
-        import shutil
-        for cache_name in ("Cache", "Code Cache", "GPUCache"):
-            c_dir = os.path.join(STORAGE_PATH, "EBWebView", "Default", cache_name)
-            if os.path.exists(c_dir):
-                shutil.rmtree(c_dir, ignore_errors=True)
-    except Exception:
-        pass
 
     api = ViewerAPI()
     html_path = get_resource_path('viewer.html')
@@ -1270,6 +1288,11 @@ def run_windows():
             pass
         sync_win()
 
+    def on_loaded():
+        close_splash()
+
+    window.events.loaded += on_loaded
+    window.events.shown += lambda: close_splash()
     window.events.resized += sync_win
     window.events.moved += sync_win
     window.events.closing += on_closing
